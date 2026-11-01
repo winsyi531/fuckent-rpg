@@ -50,7 +50,7 @@ button:active{transform:translateY(2px)}
     <div class="mid"><button data-k="start">START</button><button id="mute">音效：開</button></div>
     <div class="ab"><button data-k="b">B</button><button data-k="a">A</button></div>
   </div>
-  <div class="hint">鍵盤：方向鍵/WASD 移動 ・ Z/空白鍵 = A（確認/對話）・ X = B（取消）・ Enter = START（選單）</div>
+  <div class="hint">鍵盤：方向鍵/WASD 移動 ・ Z/空白鍵 = A（確認/對話）・ X = B（取消／按住跑步）・ Enter = START（選單）</div>
 </div>
 <script>
 "use strict";
@@ -708,7 +708,7 @@ async function bossTalk(n){
   await say('法克大老闆：歡迎加入！No Script，只有真實互動！');
   F.leader=true;saveGame();await ending()}
 
-async function scriptedStep(dir){G.dir=dir;const[dx,dy]=DIRV[dir];P.dx=dx;P.dy=dy;P.prog=0;P.moving=true;
+async function scriptedStep(dir){G.dir=dir;const[dx,dy]=DIRV[dir];P.dx=dx;P.dy=dy;P.prog=0;P.run=false;P.moving=true;
   await new Promise(r=>P.scripted=r)}
 async function npcStep(n,dir){n.dir=dir;const[dx,dy]=DIRV[dir];let k=0;
   await tween(240,p=>{n.ox=dx*16*p;n.oy=dy*16*p;n.fr=p<.5?(k%2?1:2):0});n.x+=dx;n.y+=dy;n.ox=n.oy=0;n.fr=0}
@@ -926,7 +926,7 @@ function update(){
   if(mode==='title'){const b=pressQ.shift();if((b==='a'||b==='start')&&!busy)runScript(titleFlow);return}
   if(mode==='ending'){const b=pressQ.shift();if(END&&END.done&&(b==='a'||b==='start')&&END.res){const r=END.res;END.res=null;r()}return}
   if(mode!=='world')return;
-  if(P.moving){P.prog+=WALK;if(P.prog>=16){G.x+=P.dx;G.y+=P.dy;P.moving=false;P.prog=0;P.steps++;
+  if(P.moving){P.prog+=P.run?WALK*2:WALK;if(P.prog>=16){G.x+=P.dx;G.y+=P.dy;P.moving=false;P.prog=0;P.steps++;
       if(P.scripted){const r=P.scripted;P.scripted=null;r()}else onStep()}return}
   if(busy||UI.dlg||UI.menu)return;
   const b=pressQ.shift();
@@ -934,7 +934,7 @@ function update(){
   if(b==='start'){runScript(worldMenu);return}
   const d=heldDir();
   if(d){if(G.dir!==d){G.dir=d;P.turnWait=6;return}if(P.turnWait>0){P.turnWait--;return}
-    const[dx,dy]=DIRV[d];if(walkable(G.x+dx,G.y+dy)){P.dx=dx;P.dy=dy;P.moving=true;P.prog=0}else if(frame%18===0)SFX.bump()}
+    const[dx,dy]=DIRV[d];if(walkable(G.x+dx,G.y+dy)){P.dx=dx;P.dy=dy;P.moving=true;P.prog=0;P.run=!!held.b}else if(frame%18===0)SFX.bump()}
   else P.turnWait=0}
 
 // ================= 繪製 =================
