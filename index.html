@@ -848,7 +848,7 @@ async function useMove(s,id){
 async function checkFaint(){
   if(B.e.hp<=0){SFX.faint();await tween(400,p=>B.eY=p*70);B.eVis=false;B.showE=false;
     await say(`${pre('e')}${nm(B.e)} 倒下了！`);
-    const gain=Math.floor(SP[B.e.sp].xp*B.e.lvl/7*(B.wild?1:1.5));const ps=G.party.filter(m=>B.part.has(m)&&m.hp>0);const share=Math.max(1,Math.floor(gain/Math.max(1,ps.length)));for(const m of ps)await gainExp(m,share);
+    const gain=Math.floor(SP[B.e.sp].xp*B.e.lvl/7*(B.wild?1:1.5));const ps=G.party.filter(m=>B.part.has(m)&&m.hp>0);const share=Math.max(1,Math.floor(gain/Math.max(1,ps.length)));B.shared=ps.filter(m=>m!==B.a).map(m=>({m,disp:expFrac(m),lv:m.lvl}));for(const m of ps)await gainExp(m,share);await sleep(300);B.shared=null;
     if(!B.wild&&B.ei<B.team.length-1){B.ei++;await sendEnemy(B.team[B.ei]);return{cont:true}}
     if(!B.wild){B.trSpr=charSprite(B.tr.look,'down',0);await tween(400,p=>B.trX=120*(1-p));await say(`你打贏了 ${B.tr.name}！`);for(const l of B.tr.lose)await say(l)}
     const earn=B.wild?B.e.lvl*15:B.team.reduce((t,m)=>t+m.lvl*25,0);G.points=(G.points||0)+earn;await say(`{N} 獲得了 ${earn} 點頻道點數！`);
@@ -858,10 +858,10 @@ async function checkFaint(){
     if(G.party.some(m=>m.hp>0)){const i=await battlePartyPick(true);await sendAlly(G.party[i]);return{cont:true}}
     await say('{N} 的夥伴全部倒下了……');await say('{N} 眼前一片漆黑！');return{end:'lose'}}
   return null}
-async function gainExp(m,n){const act=m===B.a;await say(`${nm(m)} 獲得了 ${n} 點經驗值！`,{wait:400});m.exp+=n;
-  while(true){if(act){const from=B.dispX,to=m.exp>=expFor(m.lvl+1)?1:expFrac(m);await tween(450,p=>B.dispX=from+(to-from)*p)}
+async function gainExp(m,n){const act=m===B.a,sh=(B.shared||[]).find(e=>e.m===m);await say(`${nm(m)} 獲得了 ${n} 點經驗值！`,{wait:400});m.exp+=n;
+  while(true){const to=m.exp>=expFor(m.lvl+1)?1:expFrac(m);if(act){const from=B.dispX;await tween(450,p=>B.dispX=from+(to-from)*p)}else if(sh){const from=sh.disp;sh.glow=true;await tween(450,p=>sh.disp=from+(to-from)*p)}
     if(m.exp<expFor(m.lvl+1))break;
-    const old=m.maxhp;m.lvl++;calc(m);m.hp+=m.maxhp-old;if(act){B.dispA=m.hp;B.dispX=0}SFX.lvl();
+    const old=m.maxhp;m.lvl++;calc(m);m.hp+=m.maxhp-old;if(act){B.dispA=m.hp;B.dispX=0}if(sh){sh.disp=0;sh.lv=m.lvl}SFX.lvl();
     await say(`${nm(m)} 升到了 Lv.${m.lvl}！`);
     for(const[l,mv]of SP[m.sp].learn)if(l===m.lvl&&!m.moves.includes(mv))await learnMove(m,mv)}}
 async function learnMove(m,mv){
@@ -999,6 +999,9 @@ function renderBattle(){
   if(B.showE)hpBox(B.e,8,10,104,28,B.dispE,false);
   if(B.showE&&B.sparkle)txt('★',115,15,{size:18,col:'#f0b020',sh:'#0004'});
   if(B.showA)hpBox(B.a,128,72,108,38,B.dispA,true);
+  if(B.shared)B.shared.forEach((e,i)=>{const y=55-i*17;box(128,y,108,16);img(MINI[e.m.sp],131,y);
+    txt(nm(e.m),149,y+2,Object.assign({size:11},TXT_LIGHT));txt('Lv'+e.lv,230,y+2,Object.assign({size:11,align:'right'},TXT_LIGHT));
+    nR(149,y+11,82,3,'#405060');nR(150,y+12,80*clamp(e.disp,0,1),1,e.glow?'#78d0ff':'#48a8f8')});
   box(0,112,240,48,'dark');
   if(UI.bprompt){const ls=UI.bprompt.split('\n');ls.forEach((l,i)=>txt(l,10,120+i*16,TXT_DARK))}
   if(UI.moveInfo){box(160,112,80,48);const M=MV[UI.moveInfo];txt('威力 '+(M.pow||'—'),168,120,Object.assign({size:14},TXT_LIGHT));
