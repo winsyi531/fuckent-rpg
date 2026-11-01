@@ -825,7 +825,7 @@ function enemyMove(){const ms=B.e.moves;const dmg=ms.filter(k=>MV[k].pow>0),st=m
   return pick(dmg.length?dmg:ms)}
 async function sendEnemy(m){B.eShrink=1;B.e=m;B.st.e={atk:0,def:0};B.dispE=m.hp;B.eY=0;B.eVis=true;SFX.pop();
   await tween(250,p=>B.eShrink=1-p);B.showE=true;await say(`${B.tr.name} 派出了 ${nm(m)}！`,{wait:500})}
-async function sendAlly(m){B.aShrink=1;B.a=m;B.st.a={atk:0,def:0};B.dispA=m.hp;B.dispX=expFrac(m);B.aY=0;B.aVis=true;SFX.pop();
+async function sendAlly(m){B.aShrink=1;B.a=m;B.moveIdx.delete(m);B.st.a={atk:0,def:0};B.dispA=m.hp;B.dispX=expFrac(m);B.aY=0;B.aVis=true;SFX.pop();
   await say(`去吧！${nm(m)}！`,{wait:300});await tween(250,p=>B.aShrink=1-p);B.showA=true;await sleep(200)}
 const expFrac=m=>clamp((m.exp-expFor(m.lvl))/(expFor(m.lvl+1)-expFor(m.lvl)),0,1);
 async function animHP(side,from,to,max){const key=side==='a'?'dispA':'dispE';await tween(300+Math.abs(from-to)/max*700,p=>B[key]=from+(to-from)*p);B[key]=to}
