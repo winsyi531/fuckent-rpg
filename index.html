@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>法克娛樂：實況怪獸 ～榮譽會員之路～</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:radial-gradient(circle at 50% 0%,#3a2470,#140c26 70%);color:#eee;font-family:"Noto Sans TC",sans-serif;display:flex;flex-direction:column;align-items:center;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#wrap{width:min(100vw,900px,calc((100vh - 190px)*1.5));min-width:300px;padding:10px 10px 0}
+.shell{background:linear-gradient(#6a3fc8,#4b2a96);border-radius:14px 14px 34px 14px;padding:12px;box-shadow:0 6px 0 #2a1660,0 10px 30px #0008;position:relative}
+.screenwrap{position:relative;background:#000;border-radius:4px;padding:6px;box-shadow:inset 0 0 0 3px #1b1036}
+canvas{width:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+.brand{font-size:12px;color:#e8d8ff;letter-spacing:2px;margin-top:6px;text-align:center;opacity:.85}
+.controls{display:flex;justify-content:space-between;align-items:center;margin:12px 4px 4px;gap:10px}
+.dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px)}
+.dpad button{background:#2a2238;border:none;color:#bbb;font-size:16px;border-radius:6px}
+.dpad .c{background:#2a2238;border-radius:0}
+.ab{display:flex;gap:14px;align-items:center;transform:rotate(-15deg)}
+.ab button{width:56px;height:56px;border-radius:50%;border:none;background:#c8325a;color:#fff;font-weight:700;font-size:18px;box-shadow:0 4px 0 #7a1a36}
+.mid{display:flex;flex-direction:column;gap:8px;align-items:center}
+.mid button{background:#3a2c58;color:#ddd;border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;box-shadow:0 3px 0 #1a1030}
+button:active{transform:translateY(2px)}
+.hint{font-size:12px;color:#b8a8d8;text-align:center;margin:8px 0 14px;line-height:1.6}
+#nameBox{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000a;z-index:5}
+#nameBox div{background:#f8f8f8;border:4px solid #384858;padding:14px;border-radius:6px;color:#333;text-align:center}
+#nameBox input{font:700 18px "Noto Sans TC",sans-serif;padding:6px;width:180px;border:2px solid #88a8c8;border-radius:4px;text-align:center}
+#nameBox button{margin-top:10px;font:700 15px "Noto Sans TC",sans-serif;background:#7b3fe4;color:#fff;border:none;border-radius:6px;padding:6px 18px}
+@media (hover:hover) and (pointer:fine){.controls{opacity:.9}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="shell">
+    <div class="screenwrap">
+      <canvas id="c" width="480" height="320"></canvas>
+      <div id="nameBox"><div><div style="margin-bottom:8px;font-weight:700">輸入你的名字（最多 8 字）</div><input id="nameIn" maxlength="8" autocomplete="off"><br><button id="nameOk">決定</button></div></div>
+    </div>
+    <div class="brand">FUCKENT ◆ 實況怪獸</div>
+  </div>
+  <div class="controls">
+    <div class="dpad">
+      <span></span><button data-k="up">▲</button><span></span>
+      <button data-k="left">◀</button><span class="c"></span><button data-k="right">▶</button>
+      <span></span><button data-k="down">▼</button><span></span>
+    </div>
+    <div class="mid"><button data-k="start">START</button><button id="mute">音效：開</button></div>
+    <div class="ab"><button data-k="b">B</button><button data-k="a">A</button></div>
+  </div>
+  <div class="hint">鍵盤：方向鍵/WASD 移動 ・ Z/空白鍵 = A（確認/對話）・ X = B（取消）・ Enter = START（選單）</div>
+</div>
+<script>
+"use strict";
+// ================= 基本設定 =================
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const S=2,W=240,H=160;ctx.imageSmoothingEnabled=false;
+const FONT='"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+let frame=0;
+
+// ================= 像素繪圖工具 =================
+function mk(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
+function hex(c){const n=parseInt(c.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
+function painter(w,h,fn,opt={}){
+  const c=mk(w,h),g=c.getContext('2d');
+  const a={g,
+    R:(x,y,ww,hh,col)=>{g.fillStyle=col;g.fillRect(x,y,ww,hh)},
+    P:(x,y,col)=>{g.fillStyle=col;g.fillRect(x,y,1,1)},
+    E:(cx,cy,rx,ry,col)=>{g.fillStyle=col;for(let y=Math.floor(cy-ry);y<=Math.ceil(cy+ry);y++)for(let x=Math.floor(cx-rx);x<=Math.ceil(cx+rx);x++){const dx=(x+.5-cx)/rx,dy=(y+.5-cy)/ry;if(dx*dx+dy*dy<=1)g.fillRect(x,y,1,1)}},
+    L:(x0,y0,x1,y1,col,t=1)=>{g.fillStyle=col;const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))||1;for(let i=0;i<=n;i++){const x=Math.round(x0+(x1-x0)*i/n),y=Math.round(y0+(y1-y0)*i/n);g.fillRect(x-Math.floor(t/2),y-Math.floor(t/2),t,t)}},
+  };
+  a.C=(cx,cy,r,col)=>a.E(cx,cy,r,r,col);
+  fn(a);
+  if(opt.shade!==false)shade(c);
+  if(opt.outline!==false)outline(c,opt.outline||'#1c1630');
+  return c;
+}
+function outline(c,col){const g=c.getContext('2d'),w=c.width,h=c.height,d=g.getImageData(0,0,w,h),A=new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++)A[i]=d.data[i*4+3]>0?1:0;const[r,gg,b]=hex(col);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(A[i])continue;
+    if((x>0&&A[i-1])||(x<w-1&&A[i+1])||(y>0&&A[i-w])||(y<h-1&&A[i+w])){const k=i*4;d.data[k]=r;d.data[k+1]=gg;d.data[k+2]=b;d.data[k+3]=255}}
+  g.putImageData(d,0,0)}
+function shade(c){const g=c.getContext('2d'),w=c.width,h=c.height,d=g.getImageData(0,0,w,h),A=new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++)A[i]=d.data[i*4+3]>0?1:0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(!A[i])continue;
+    const dark=(x===w-1||!A[i+1])||(y===h-1||!A[i+w]);const light=(x===0||!A[i-1])||(y===0||!A[i-w]);
+    const k=i*4;if(dark&&!light){for(let j=0;j<3;j++)d.data[k+j]=d.data[k+j]*.75}else if(light&&!dark){for(let j=0;j<3;j++)d.data[k+j]=Math.min(255,d.data[k+j]*1.12+12)}}
+  g.putImageData(d,0,0)}
+
+// ================= 屬性 / 招式 / 角色資料 =================
+const TYPECOL={FPS:'#e05050',MOBA:'#4a7ae0','雜談':'#8a8a8a','魅力':'#e060b0','戰棋':'#d09a20'};
+const SUPER={FPS:['雜談'],'雜談':['魅力','戰棋'],'魅力':['FPS','戰棋'],'戰棋':['MOBA'],MOBA:['雜談','FPS']};
+function typeEff(atk,def){if((SUPER[atk]||[]).includes(def))return 2;if((SUPER[def]||[]).includes(atk))return .5;return 1}
+const MV={
+  skewer:{name:'串燒戳戳',type:'雜談',pow:35},
+  prez:{name:'會長威嚴',type:'雜談',pow:0,fx:['foe','atk',-1]},
+  latenight:{name:'深夜開台',type:'雜談',pow:45},
+  noscript:{name:'無劇本雜談',type:'雜談',pow:70,acc:90},
+  bounce:{name:'布丁彈跳',type:'雜談',pow:35},
+  voice:{name:'性感嗓音',type:'魅力',pow:0,fx:['foe','atk',-1]},
+  command:{name:'沉穩指揮',type:'FPS',pow:45},
+  headshot:{name:'一槍爆頭',type:'FPS',pow:70,acc:90},
+  eurotruck:{name:'歐卡橫跨歐洲',type:'雜談',pow:80,acc:85},
+  crispy:{name:'酥皮撞擊',type:'雜談',pow:35},
+  prsmile:{name:'公關微笑',type:'魅力',pow:0,fx:['foe','def',-1]},
+  spicy:{name:'酷辣魅力',type:'魅力',pow:45},
+  golden:{name:'黃金光環',type:'魅力',pow:70,acc:90},
+  tftlogic:{name:'TFT 排陣',type:'戰棋',pow:60},
+  topic:{name:'B寶話題',type:'雜談',pow:35},
+  smoke:{name:'煙霧瀰漫',type:'雜談',pow:0,fx:['foe','def',-1]},
+  feed:{name:'先送頭',type:'FPS',pow:65,recoil:.33},
+  highlight:{name:'經典亮點',type:'雜談',pow:80,acc:70},
+  recruit:{name:'挖角',type:'雜談',pow:35},
+  scout:{name:'看人很準',type:'雜談',pow:0,fx:['foe','def',-1]},
+  dominance:{name:'下馬威',type:'MOBA',pow:50},
+  apexspray:{name:'APEX 掃射',type:'FPS',pow:70,acc:85},
+  headbutt:{name:'大頭槌',type:'雜談',pow:40},
+  coldjoke:{name:'一句冷場',type:'雜談',pow:0,fx:['foe','atk',-1]},
+  apexluck:{name:'時好時壞槍法',type:'FPS',pow:60,acc:75},
+  bigjoke:{name:'一句爆笑',type:'雜談',pow:70,acc:90},
+  sway:{name:'南瓜搖擺',type:'雜談',pow:35},
+  grace:{name:'從容優雅',type:'魅力',pow:0,fx:['self','def',1]},
+  fairy:{name:'仙女下凡',type:'魅力',pow:50},
+  clearmind:{name:'思路清晰',type:'戰棋',pow:65,acc:95},
+  taiyu:{name:'台語開嗆',type:'雜談',pow:40},
+  shell:{name:'免費保鑽',type:'魅力',pow:0,fx:['self','def',1]},
+  face:{name:'亂用臉',type:'魅力',pow:55},
+  bossaura:{name:'幫主氣場',type:'雜談',pow:70,acc:90},
+  badsing:{name:'鄰家級歌聲',type:'雜談',pow:45,acc:85},
+  macro:{name:'精準運營',type:'戰棋',pow:0,fx:['self','atk',1]},
+  board:{name:'排陣碾壓',type:'戰棋',pow:50},
+  world8:{name:'世界第八',type:'戰棋',pow:75,acc:90},
+};
+for(const k in MV)if(MV[k].acc==null)MV[k].acc=100;
+// 想改名字/屬性，改這裡就好
+const SP={
+  hanwen:{name:'一韓小串文',type:'雜談',base:{hp:48,atk:50,def:48,spd:50},xp:64,catch:45,
+    learn:[[1,'skewer'],[1,'prez'],[3,'latenight'],[9,'noscript']],desc:'法克娛樂會長。深夜開台、聊到忘記時間，不靠劇本的真實感無可取代。'},
+  pudding:{name:'麻辣布丁狗',type:'FPS',base:{hp:44,atk:54,def:44,spd:54},xp:64,catch:45,
+    learn:[[1,'bounce'],[1,'voice'],[3,'command'],[9,'headshot'],[14,'eurotruck']],desc:'法克娛樂副會長。嗓音公認最性感，Valorant 戰場上的沉穩指揮官。'},
+  drumstick:{name:'黃金酷辣雞腿排',type:'魅力',base:{hp:46,atk:52,def:46,spd:52},xp:64,catch:45,
+    learn:[[1,'crispy'],[1,'prsmile'],[3,'spicy'],[9,'golden'],[13,'tftlogic']],desc:'法克娛樂最美公關。LOL、Valorant、TFT 全都玩，讓人一進頻道就想留下。'},
+  puff:{name:'4泡芙拉',type:'雜談',base:{hp:40,atk:50,def:36,spd:48},xp:50,catch:60,
+    learn:[[1,'topic'],[1,'smoke'],[4,'feed'],[12,'highlight']]},
+  axian:{name:'哇洗阿賢',type:'MOBA',base:{hp:42,atk:50,def:42,spd:50},xp:54,catch:50,
+    learn:[[1,'recruit'],[1,'scout'],[4,'dominance'],[12,'apexspray']]},
+  datou:{name:'大頭大頭大頭',type:'FPS',base:{hp:56,atk:52,def:46,spd:38},xp:56,catch:45,
+    learn:[[1,'headbutt'],[1,'coldjoke'],[4,'apexluck'],[9,'bigjoke']]},
+  sunsun:{name:'蓀蓀楠瓜',type:'魅力',base:{hp:48,atk:46,def:48,spd:44},xp:56,catch:45,
+    learn:[[1,'sway'],[1,'grace'],[4,'fairy'],[11,'clearmind']]},
+  jeni:{name:'傑尼尼尼',type:'雜談',base:{hp:56,atk:52,def:52,spd:40},xp:72,catch:30,
+    learn:[[1,'taiyu'],[1,'shell'],[4,'face'],[8,'bossaura']]},
+  cool:{name:'酷酷的斜音梗',type:'戰棋',base:{hp:58,atk:56,def:50,spd:46},xp:80,catch:25,
+    learn:[[1,'badsing'],[1,'macro'],[4,'board'],[9,'world8']]},
+};
+const STARTERS=['hanwen','pudding','drumstick'];
+const expFor=L=>L<=1?0:Math.floor(.8*L*L*L);
+function calc(m){const b=SP[m.sp].base,L=m.lvl;m.maxhp=Math.floor(b.hp*2*L/100)+L+10;
+  for(const k of['atk','def','spd'])m[k]=Math.floor(b[k]*2*L/100)+5}
+function makeMon(sp,lvl){const m={sp,lvl,exp:expFor(lvl),moves:[]};calc(m);m.hp=m.maxhp;
+  for(const[l,mv]of SP[sp].learn)if(l<=lvl&&!m.moves.includes(mv)){m.moves.push(mv);if(m.moves.length>4)m.moves.shift()}return m}
+const nm=m=>SP[m.sp].name;
+
+// ================= 怪獸像素圖 (32x32) =================
+function chibiBase(a,o){const sk=o.skin||'#f8d0a8';
+  a.R(11,26,4,3,o.pants);a.R(17,26,4,3,o.pants);a.R(10,29,5,2,'#33303a');a.R(17,29,5,2,'#33303a');
+  a.R(10,18,12,9,o.shirt);a.R(7,19,3,6,o.shirt);a.R(22,19,3,6,o.shirt);a.R(7,25,3,2,sk);a.R(22,25,3,2,sk);
+  a.E(16,11.5,8.5,8,sk);
+  if(o.hair){a.E(16,7,9.5,5.2,o.hair);a.R(7,7,2,6,o.hair);a.R(23,7,2,6,o.hair);a.R(10,8,3,2,o.hair);a.R(19,8,4,2,o.hair)}
+}
+function eyes(a,y=12){a.R(12,y,2,3,'#222');a.R(19,y,2,3,'#222');a.P(12,y,'#fff');a.P(19,y,'#fff');a.R(10,y+4,2,1,'#f09a8a');a.R(21,y+4,2,1,'#f09a8a')}
+const DRAW={
+  hanwen:a=>{
+    a.R(15,2,2,28,'#d8b070');
+    a.R(8,5,16,10,'#b8642c');a.R(9,4,14,1,'#b8642c');a.R(9,15,14,1,'#b8642c');
+    a.R(9,6,3,1,'#6a3010');a.R(20,13,3,1,'#6a3010');a.R(10,14,2,1,'#6a3010');
+    a.R(11,8,3,3,'#fff');a.R(18,8,3,3,'#fff');a.R(12,9,2,2,'#1a1a1a');a.R(19,9,2,2,'#1a1a1a');
+    a.R(14,12,4,1,'#5a1a0a');a.P(13,11,'#5a1a0a');a.P(18,11,'#5a1a0a');a.P(10,11,'#ff8a7a');a.P(21,11,'#ff8a7a');
+    a.R(8,3,16,1,'#3a3a4a');a.R(6,5,3,7,'#7b3fe4');a.R(23,5,3,7,'#7b3fe4');a.P(7,6,'#b08af8');
+    a.R(11,1,10,2,'#f0c030');a.P(11,0,'#f0c030');a.P(14,0,'#f0c030');a.P(17,0,'#f0c030');a.P(20,0,'#f0c030');a.P(15,1,'#e03040');
+    a.R(7,12,1,3,'#3a3a4a');a.R(8,14,3,1,'#3a3a4a');a.P(11,14,'#f04040');
+    a.R(10,17,12,5,'#48a848');a.R(11,16,10,1,'#48a848');a.R(12,18,6,1,'#88d878');
+    a.R(5,18,5,2,'#f0c090');a.R(22,18,5,2,'#f0c090');
+    a.R(9,23,14,6,'#a8542a');a.R(10,22,12,1,'#a8542a');a.R(11,25,3,1,'#6a3010');a.R(18,27,3,1,'#6a3010');
+    a.P(12,16,'#d03020');a.P(20,16,'#d03020');a.P(20,17,'#d03020');a.P(13,22,'#d03020');
+  },
+  pudding:a=>{
+    a.E(16,29.5,13,2,'#e8e8f0');
+    a.E(5,18,3,6,'#7a3a1a');a.E(27,18,3,6,'#7a3a1a');
+    for(let y=12;y<=28;y++){const hw=Math.round(8+(y-12)*.25);a.R(16-hw,y,hw*2,1,'#f6d36b')}
+    for(let y=10;y<=15;y++){const hw=Math.round(7+(y-10)*.3);a.R(16-hw,y,hw*2,1,'#8a4a1a')}
+    a.R(9,16,2,2,'#8a4a1a');a.R(14,16,2,3,'#8a4a1a');a.R(21,16,2,2,'#8a4a1a');
+    a.R(14,5,4,6,'#e53935');a.R(15,3,3,2,'#e53935');a.P(13,9,'#e53935');a.R(17,1,2,2,'#3a9a3a');a.P(19,1,'#3a9a3a');a.P(15,6,'#ff9a90');
+    a.C(12,20.5,3,'#222');a.C(12,20.5,2,'#e8f4ff');a.C(20,20.5,3,'#222');a.C(20,20.5,2,'#e8f4ff');a.R(14,20,4,1,'#222');
+    a.R(12,20,1,2,'#222');a.R(20,20,1,2,'#222');
+    a.R(15,23,2,1,'#3a1a0a');a.P(14,24,'#3a1a0a');a.P(17,24,'#3a1a0a');a.R(15,25,2,2,'#f06080');
+    a.R(7,23,2,1,'#f09070');a.R(23,23,2,1,'#f09070');
+    [[9,27],[23,26],[12,28],[20,28],[24,19],[8,17]].forEach(([x,y])=>a.P(x,y,'#d02020'));
+  },
+  drumstick:a=>{
+    a.R(1,10,5,1,'#a0a0b8');a.R(2,14,4,1,'#a0a0b8');a.R(1,18,5,1,'#a0a0b8');
+    a.L(8,25,14,19,'#f5f0e0',3);a.C(5.5,25.5,2.3,'#f5f0e0');a.C(8.5,28.5,2.3,'#f5f0e0');
+    a.E(18.5,15,10,10,'#e8a828');a.E(13,20,5,4,'#e8a828');
+    [[14,7],[22,8],[25,15],[20,22],[12,15],[17,21],[24,20]].forEach(([x,y])=>{a.P(x,y,'#c07a10');a.P(x+1,y,'#f8d060')});
+    [[24,11],[11,18],[21,24]].forEach(([x,y])=>a.P(x,y,'#d02020'));
+    a.E(15,3.5,3,2,'#f070a8');a.E(22,3.5,3,2,'#f070a8');a.C(18.5,3.5,1.4,'#c83a80');
+    a.R(10,11,7,4,'#202028');a.R(19,11,7,4,'#202028');a.R(17,12,2,1,'#202028');
+    a.R(11,12,2,1,'#b07ab8');a.R(20,12,2,1,'#b07ab8');a.P(10,10,'#202028');a.P(25,10,'#202028');
+    a.R(15,18,6,2,'#c02040');a.R(16,18,4,1,'#ff7090');a.R(10,16,2,1,'#f88a8a');a.R(24,16,2,1,'#f88a8a');
+  },
+  puff:a=>{
+    a.C(26,6,3,'#d8d8e4');a.C(23,3.5,2.5,'#e8e8f0');a.C(29,10,2,'#c8c8d4');a.C(4,9,2,'#d8d8e4');
+    a.E(16,23,12,7,'#d89848');a.E(16,16,11,8,'#f0c070');
+    a.R(5,19,22,3,'#fff8e8');for(let x=5;x<27;x+=3)a.P(x,22,'#fff8e8');
+    [[12,11],[17,10],[21,13],[10,15],[15,13],[20,16]].forEach(([x,y])=>a.P(x,y,'#fffaf0'));
+    a.R(11,23,3,2,'#222');a.R(18,23,3,2,'#222');a.R(11,23,3,1,'#5a4a3a');a.R(18,23,3,1,'#5a4a3a');
+    a.R(14,27,5,1,'#5a2a10');a.P(19,26,'#5a2a10');a.R(8,26,2,1,'#e08a6a');a.R(22,26,2,1,'#e08a6a');
+    a.R(3,23,3,2,'#f8d0a8');a.R(26,23,3,2,'#f8d0a8');
+    a.R(13,15,6,1,'#c87a30');a.R(15,14,1,3,'#c87a30');
+  },
+  axian:a=>{
+    chibiBase(a,{shirt:'#2a2a3a',pants:'#2a2a3a',hair:'#2a1a10'});
+    a.R(14,18,4,2,'#f4f4f4');a.R(15,19,2,7,'#c03030');
+    a.R(10,12,5,2,'#111');a.R(17,12,5,2,'#111');a.R(15,12,2,1,'#111');a.P(11,12,'#6a6a8a');a.P(18,12,'#6a6a8a');
+    a.R(14,16,4,1,'#8a3030');a.P(18,15,'#8a3030');
+    a.R(22,19,7,10,'#a0703a');a.R(23,21,5,7,'#fff');a.R(24,22,3,1,'#888');a.R(24,24,3,1,'#888');a.R(24,26,2,1,'#c03030');a.R(24,19,3,1,'#c0c0c8');
+  },
+  datou:a=>{
+    a.R(12,25,8,4,'#f0c030');a.R(13,29,2,2,'#2a3050');a.R(17,29,2,2,'#2a3050');a.R(10,26,2,2,'#f8d0a8');a.R(20,26,2,2,'#f8d0a8');
+    a.E(16,14,13,11.5,'#f8d0a8');
+    a.R(4,7,2,6,'#202020');a.R(26,7,2,6,'#202020');
+    a.E(16,5,11,4.5,'#2050a0');a.R(4,8,24,2,'#183a78');a.R(14,3,4,3,'#f0c030');a.P(15,4,'#fff');
+    a.C(11,14,3.5,'#303030');a.C(21,14,3.5,'#303030');a.C(11,14,2.5,'#e0f0ff');a.C(21,14,2.5,'#e0f0ff');a.R(14,13,4,1,'#303030');
+    a.R(10,14,2,2,'#222');a.R(20,14,2,2,'#222');
+    a.E(16,21,5.5,3,'#802020');a.R(12,19,8,1,'#fff');a.R(14,22,4,1,'#f06060');
+    a.R(5,18,2,1,'#f09a8a');a.R(25,18,2,1,'#f09a8a');
+  },
+  sunsun:a=>{
+    a.E(5,15,4,7,'#d8f0ff');a.E(27,15,4,7,'#d8f0ff');a.P(4,13,'#ffffff');a.P(26,13,'#ffffff');
+    a.R(10,28,4,2,'#b85a10');a.R(18,28,4,2,'#b85a10');
+    a.E(16,19,12,10,'#f08a20');a.E(16,19,7,10,'#e07a14');a.E(16,19,3,10,'#f8a040');
+    a.R(15,6,3,4,'#3a8a3a');a.E(20,8,3,1.5,'#58b048');
+    a.R(11,1,10,1,'#f8e060');a.P(10,2,'#f8e060');a.P(21,2,'#f8e060');a.R(11,3,10,1,'#f8e060');
+    a.P(9,17,'#3a1a0a');a.P(10,16,'#3a1a0a');a.P(11,16,'#3a1a0a');a.P(12,17,'#3a1a0a');
+    a.P(20,17,'#3a1a0a');a.P(21,16,'#3a1a0a');a.P(22,16,'#3a1a0a');a.P(23,17,'#3a1a0a');
+    a.R(14,22,4,1,'#3a1a0a');a.P(13,21,'#3a1a0a');a.P(18,21,'#3a1a0a');
+    a.R(8,20,2,1,'#f06060');a.R(23,20,2,1,'#f06060');
+    a.P(2,4,'#f8e060');a.P(29,6,'#f8e060');a.P(28,26,'#fff8c0');a.P(3,25,'#fff8c0');
+  },
+  jeni:a=>{
+    const sk='#f8d8b8',hr='#3a2048';
+    a.E(16,10,11,9,hr);a.R(5,10,22,14,hr);a.P(5,24,hr);a.P(8,24,hr);a.P(24,24,hr);a.P(26,24,hr);
+    a.R(12,26,3,3,sk);a.R(17,26,3,3,sk);a.R(11,29,4,2,'#c83068');a.R(17,29,4,2,'#c83068');
+    for(let y=18;y<=26;y++){const hw=Math.round(5+(y-18)*.5);a.R(16-hw,y,hw*2,1,'#2fa58a')}
+    a.R(14,18,4,1,'#f4f4f4');a.R(11,21,10,1,'#f0c030');a.P(16,21,'#fff8c0');
+    a.R(8,19,2,6,sk);a.R(22,19,2,6,sk);
+    a.P(26,20,'#a8f4ff');a.R(25,21,3,1,'#70e8ff');a.R(25,22,3,1,'#40c0e0');a.P(26,23,'#40c0e0');a.P(29,18,'#fff8c0');
+    a.E(16,11.5,8,7.5,sk);
+    a.E(16,6,9,4.5,hr);a.R(8,6,3,9,hr);a.R(21,6,3,9,hr);a.R(11,8,3,2,hr);a.R(17,8,4,2,hr);
+    a.C(23,4.5,2.2,'#58b878');a.P(22,4,'#2e7a4a');a.P(24,5,'#2e7a4a');a.P(23,3,'#a8e8b8');
+    a.R(12,11,2,3,'#2a1830');a.R(19,11,2,3,'#2a1830');a.P(12,11,'#fff');a.P(19,11,'#fff');
+    a.P(11,10,'#2a1830');a.P(21,10,'#2a1830');
+    a.R(10,15,2,1,'#f59aa8');a.R(21,15,2,1,'#f59aa8');a.R(15,16,3,1,'#d8306a');
+    a.P(3,6,'#fff8c0');a.P(2,7,'#f8e060');a.P(4,7,'#f8e060');a.P(3,8,'#fff8c0');
+  },
+  cool:a=>{
+    chibiBase(a,{shirt:'#e8dcc4',pants:'#3a3a4a',hair:'#2a2030'});
+    a.E(16,5.5,10.5,5.5,'#2a2030');a.R(10,8,4,2,'#2a2030');a.R(18,8,5,2,'#2a2030');a.P(8,4,'#2a2030');a.P(24,4,'#2a2030');
+    a.R(12,12,2,2,'#222');a.R(19,12,2,2,'#222');a.R(15,16,3,1,'#a04040');
+    a.R(12,20,8,1,'#c8bca4');a.R(12,23,8,1,'#c8bca4');
+    a.C(16,25,2.5,'#e8b830');a.R(15,24,2,1,'#8a6010');a.R(15,26,2,1,'#8a6010');
+    a.C(26.5,16,2,'#f4f4f4');a.R(25,18,3,4,'#f4f4f4');a.R(24,22,5,2,'#f4f4f4');
+    a.R(3,2,1,5,'#909098');a.R(1,5,3,2,'#909098');a.P(4,2,'#909098');a.P(5,3,'#909098');a.R(6,7,1,4,'#909098');a.R(5,10,2,1,'#909098');
+  },
+};
+const MONSPR={};for(const k in DRAW)MONSPR[k]=painter(32,32,DRAW[k]);
+const MINI={};for(const k in MONSPR){const c=mk(16,16),g=c.getContext('2d');g.imageSmoothingEnabled=false;g.drawImage(MONSPR[k],0,0,16,16);MINI[k]=c}
+const CAPSULE=painter(12,12,a=>{a.R(1,2,10,8,'#8a48e8');a.R(2,1,8,1,'#8a48e8');a.R(2,10,8,1,'#8a48e8');a.R(2,3,8,5,'#2a1a48');a.R(3,4,2,1,'#c8a8ff');a.C(8,9,1.2,'#f03040');a.R(4,9,2,1,'#f4f4f4');a.R(9,0,1,2,'#c8c8d0')});
+const CARD=painter(12,14,a=>{a.R(1,1,10,12,'#8a48e8');a.R(2,2,8,10,'#a070f0');a.R(5,4,2,6,'#fff');a.R(3,6,6,2,'#fff');a.P(2,2,'#e0d0ff')});
+const BADGE=painter(32,32,a=>{
+  a.R(9,22,5,9,'#c8325a');a.R(18,22,5,9,'#c8325a');a.P(10,30,'#0000');
+  a.C(16,14,12.5,'#e8b830');a.C(16,14,10.5,'#f8d860');a.C(16,14,9,'#7b3fe4');
+  for(let i=0;i<5;i++){const t=-Math.PI/2+i*2*Math.PI/5;a.C(16+Math.cos(t)*10.5,14+Math.sin(t)*10.5,1.6,'#fff4b0')}
+  a.R(12,8,8,2,'#fff');a.R(12,8,2,12,'#fff');a.R(12,13,6,2,'#fff');a.P(19,9,'#e0d0ff');
+});
+
+// ================= 地圖角色像素圖 (16x16) =================
+const LOOK={
+  player:{id:'player',hair:'#3a2418',shirt:'#7b3fe4',pants:'#2a2a48',hat:'#202028'},
+  mom:{id:'mom',hair:'#8a4a28',shirt:'#f08ab0',pants:'#f08ab0',long:true},
+  prof:{id:'prof',hair:'#c8c8c8',shirt:'#f4f4f4',pants:'#6a4a3a'},
+  aide:{id:'aide',hair:'#202020',shirt:'#48b0e8',pants:'#304060',glasses:true},
+  oldman:{id:'oldman',hair:'#e8e8e8',shirt:'#6a8a4a',pants:'#5a4a3a'},
+  kid:{id:'kid',hair:'#5a3a1a',shirt:'#f0c030',pants:'#3a5aa0',hat:'#e04040'},
+  viewer:{id:'viewer',hair:'#202020',shirt:'#40a060',pants:'#303030',hat:'#3060c0'},
+  girl:{id:'girl',hair:'#d06030',shirt:'#f8f0a0',pants:'#e07090',long:true},
+  clerk:{id:'clerk',hair:'#302018',shirt:'#f09030',pants:'#303030'},
+  gamer:{id:'gamer',hair:'#604080',shirt:'#303848',pants:'#202028',glasses:true},
+  fan:{id:'fan',hair:'#f0a0c0',shirt:'#9050e0',pants:'#2a2a48',long:true},
+  passer:{id:'passer',hair:'#3a2a1a',shirt:'#e0e0e0',pants:'#4060a0'},
+  trainee:{id:'trainee',hair:'#202020',shirt:'#c03030',pants:'#202020',hat:'#c03030'},
+  boss:{id:'boss',hair:'#e0b030',shirt:'#202028',pants:'#202028',glasses:true},
+  hint:{id:'hint',hair:'#5a4a3a',shirt:'#8a6a4a',pants:'#3a3a3a',hat:'#4a3a2a'},
+};
+const CS={};
+function charSprite(lk,dir,fr){const key=lk.id+dir+fr;if(CS[key])return CS[key];
+  const c=painter(16,16,a=>{const sk='#f8d0a8',{hair,shirt,pants}=lk,shoe='#302828',side=dir==='left'||dir==='right';
+    if(!side){const l=fr===1?1:0,r=fr===2?1:0;a.R(5,12,2,3-l,pants);a.R(9,12,2,3-r,pants);a.R(5,15-l,2,1,shoe);a.R(9,15-r,2,1,shoe)}
+    else if(fr===0){a.R(6,12,3,3,pants);a.R(6,15,3,1,shoe)}else{a.R(5,12,2,3,pants);a.R(9,12,2,3,pants);a.R(4,15,3,1,shoe);a.R(9,15,3,1,shoe)}
+    if(!side){a.R(4,9,8,4,shirt);a.R(3,9,1,3,shirt);a.R(12,9,1,3,shirt);a.P(3,12,sk);a.P(12,12,sk)}
+    else{a.R(5,9,6,4,shirt);const ax=fr===0?7:(fr===1?5:9);a.R(ax,9,2,3,shirt);a.P(ax,12,sk)}
+    if(dir==='down'){a.R(3,1,10,4,hair);a.R(4,4,8,5,sk);a.R(4,4,8,1,hair);a.P(4,5,hair);a.P(11,5,hair);
+      if(lk.long){a.R(3,4,1,6,hair);a.R(12,4,1,6,hair)}else{a.R(3,4,1,2,hair);a.R(12,4,1,2,hair)}
+      a.R(6,6,1,2,'#202020');a.R(9,6,1,2,'#202020');if(lk.glasses){a.R(5,6,3,1,'#202020');a.R(8,6,3,1,'#202020')}}
+    else if(dir==='up'){a.R(3,1,10,8,hair);if(lk.long)a.R(3,8,10,2,hair)}
+    else if(dir==='left'){a.R(3,1,10,4,hair);a.R(3,4,7,5,sk);a.R(9,4,4,lk.long?6:4,hair);a.R(5,6,1,2,'#202020');if(lk.glasses)a.R(3,6,4,1,'#202020')}
+    else{a.R(3,1,10,4,hair);a.R(6,4,7,5,sk);a.R(3,4,4,lk.long?6:4,hair);a.R(10,6,1,2,'#202020');if(lk.glasses)a.R(9,6,4,1,'#202020')}
+    if(lk.hat){a.R(3,1,10,2,lk.hat);if(dir==='down')a.R(2,3,12,1,lk.hat);if(dir==='left')a.R(1,3,5,1,lk.hat);if(dir==='right')a.R(10,3,5,1,lk.hat)}
+  },{outline:'#201c30'});
+  return CS[key]=c}
+
+// ================= 地圖圖塊 =================
+const T_=fn=>painter(16,16,fn,{outline:false,shade:false});
+const grass=a=>{a.R(0,0,16,16,'#8cd070');[[2,3],[10,2],[13,8],[5,11],[9,13],[1,8]].forEach(([x,y])=>{a.P(x,y,'#6cb058');a.P(x+1,y-1,'#6cb058');a.P(x+2,y,'#6cb058')})};
+const floor=a=>{a.R(0,0,16,16,'#e0b880');a.R(0,7,16,1,'#c89a60');a.R(0,15,16,1,'#c89a60');a.R(5,0,1,7,'#c89a60');a.R(12,8,1,7,'#c89a60')};
+const gymfloor=a=>{a.R(0,0,16,16,'#6a5aa0');a.R(0,0,8,8,'#7a6ab4');a.R(8,8,8,8,'#7a6ab4')};
+const roof=(c1,c2)=>T_(a=>{a.R(0,0,16,16,c1);for(let y=3;y<16;y+=4)a.R(0,y,16,1,c2);for(let y=0;y<16;y+=4)for(let x=((y/4)%2)*4;x<16;x+=8)a.R(x,y,1,3,c2)});
+const flower=(a,x,y,c)=>{a.P(x+1,y,c);a.P(x,y+1,c);a.P(x+2,y+1,c);a.P(x+1,y+2,c);a.P(x+1,y+1,'#fff8c0');a.P(x+1,y+3,'#3a8a3a')};
+const TL={};
+TL['.']=T_(grass);
+TL[',']=T_(a=>{a.R(0,0,16,16,'#5aa848');for(const[ox,oy]of[[0,0],[8,0],[4,8],[12,8],[-4,8]]){a.R(ox+1,oy+3,1,4,'#2e7a34');a.R(ox+3,oy+1,1,6,'#2e7a34');a.R(ox+5,oy+3,1,4,'#2e7a34');a.P(ox+3,oy+1,'#9ad880');a.P(ox+1,oy+3,'#9ad880');a.P(ox+5,oy+3,'#9ad880');a.R(ox,oy+7,7,1,'#3a8a3a')}});
+TL['_']=T_(a=>{a.R(0,0,16,16,'#e8d4a0');[[3,4],[11,2],[7,10],[13,13],[2,13]].forEach(([x,y])=>{a.R(x,y,2,1,'#d0b880')})});
+TL['T']=(()=>{const c=T_(grass);const t=painter(16,16,a=>{a.R(6,11,4,5,'#7a4a28');a.E(8,7,7.5,6.5,'#2f8a3c');a.E(6,5,4,3,'#4cb050');a.P(10,9,'#1f6a2c');a.P(4,8,'#1f6a2c');a.P(11,4,'#1f6a2c');a.P(9,10,'#1f6a2c')},{outline:'#1a4a24',shade:false});c.getContext('2d').drawImage(t,0,0);return c})();
+TL['~']=[0,1].map(f=>T_(a=>{a.R(0,0,16,16,'#4888e0');for(const[x,y]of[[2,4],[9,9],[4,13],[12,2]]){a.R((x+f*2)%14,y,3,1,'#90c8f8')}}));
+TL['F']=T_(a=>{grass(a);flower(a,2,2,'#f05858');flower(a,10,9,'#f8e050');flower(a,11,1,'#f8f8f8')});
+TL['R']=roof('#d84a3a','#a83228');TL['L']=roof('#4878d0','#3058a8');TL['G']=roof('#8a50e0','#5a30a8');TL['C']=roof('#ec8a2a','#b86010');
+TL['H']=T_(a=>{a.R(0,0,16,16,'#f0e4c8');a.R(0,0,16,1,'#c8b48c');a.R(0,14,16,2,'#b8a07c');a.R(4,4,8,7,'#806040');a.R(5,5,6,5,'#6898d0');a.R(5,5,2,2,'#c8e0f8');a.R(8,5,1,5,'#806040')});
+TL['D']=T_(a=>{a.R(0,0,16,16,'#f0e4c8');a.R(0,0,16,1,'#c8b48c');a.R(3,2,10,14,'#5a3a20');a.R(4,3,8,13,'#8a5a30');a.R(5,4,6,5,'#a06a38');a.P(10,10,'#f0d060')});
+TL['S']=T_(a=>{grass(a);a.R(7,9,2,6,'#7a4a28');a.R(2,2,12,8,'#7a4a28');a.R(3,3,10,6,'#d8a860');a.R(4,4,8,1,'#a07840');a.R(4,6,6,1,'#a07840')});
+TL['f']=T_(a=>{grass(a);a.R(0,5,16,2,'#f4f4f4');a.R(0,10,16,2,'#f4f4f4');a.R(0,7,16,1,'#a0a0a0');a.R(0,12,16,1,'#a0a0a0');a.R(2,3,2,11,'#ffffff');a.R(10,3,2,11,'#ffffff');a.R(4,4,1,10,'#a0a0a0');a.R(12,4,1,10,'#a0a0a0')});
+TL['W']=T_(a=>{a.R(0,0,16,16,'#e8d8b0');for(let x=0;x<16;x+=4)a.R(x,0,1,12,'#dcc8a0');a.R(0,12,16,4,'#a07850');a.R(0,12,16,1,'#806040')});
+TL['o']=T_(floor);
+TL['K']=T_(a=>{floor(a);a.R(0,3,16,10,'#9a6a3a');a.R(0,3,16,3,'#c08850');a.R(0,12,16,1,'#6a4020')});
+TL['B']=T_(a=>{a.R(0,0,16,16,'#6a4024');a.R(1,1,14,6,'#3a2414');a.R(1,9,14,6,'#3a2414');const cs=['#d84a3a','#4878d0','#f0c040','#48a848','#9050e0'];for(let i=0;i<6;i++){a.R(2+i*2,2+(i%2),2,5-(i%2),cs[i%5]);a.R(2+i*2,10+((i+1)%2),2,5-((i+1)%2),cs[(i+2)%5])}});
+TL['P']=T_(a=>{floor(a);a.R(0,9,16,5,'#7a5030');a.R(0,9,16,1,'#a07048');a.R(2,1,12,8,'#202028');a.R(3,2,10,6,'#7b3fe4');a.R(4,3,4,1,'#c8a8ff');a.R(4,5,6,1,'#a080f0');a.R(7,8,2,1,'#202028')});
+TL['r']=T_(a=>{a.R(0,0,16,16,'#c84858');a.R(2,2,12,12,'#d86070');a.R(4,4,8,8,'#c84858')});
+TL['X']=T_(a=>{floor(a);a.R(2,3,12,10,'#a04040');a.R(3,4,10,8,'#d06060');a.R(3,7,10,1,'#a04040')});
+TL['g']=T_(gymfloor);
+TL['Q']=T_(a=>{gymfloor(a);a.R(4,1,8,14,'#b8b8c8');a.R(4,1,8,2,'#e8e8f0');a.R(4,13,8,2,'#808090');a.R(6,5,4,4,'#f0c040');a.P(6,5,'#fff8c0')});
+const SOLID=new Set('T~RLGCHWKBPSfQ'.split(''));
+
+// ================= 地圖 =================
+const MAPS={
+ home:{name:'家',inside:true,rows:[
+  "WWWWWWWWWW",
+  "WBBooPoooW",
+  "WooooooooW",
+  "WooKKooooW",
+  "WooKKoorrW",
+  "WoooooorrW",
+  "WooooooooW",
+  "WWWWXWWWWW"]},
+ lab:{name:'法克研究所',inside:true,rows:[
+  "WWWWWWWWWWW",
+  "WBBBoooBBBW",
+  "WoooooooooW",
+  "WoooKKKoooW",
+  "WoooooooooW",
+  "WPoooooooPW",
+  "WoooooooooW",
+  "WoooooooooW",
+  "WWWWWXWWWWW"]},
+ town:{name:'法克鎮',rows:[
+  "TTTTTTTTT__TTTTTTTTT",
+  "T........__........T",
+  "T.RRRR...__..LLLLL.T",
+  "T.RRRR...__..LLLLL.T",
+  "T.HDHH...__..HHDHH.T",
+  "T..______________..T",
+  "T..F.....__.....F..T",
+  "T.RRRR...__........T",
+  "T.RRRR...__..S.....T",
+  "T.HHHH...__........T",
+  "T.......___..~~~~..T",
+  "T.FF.F..._...~~~~..T",
+  "TTTTTTTTTTTTTTTTTTTT"]},
+ route:{name:'一號道路',rows:[
+  "TTTTTTTTT__TTTTTTTTT",
+  "T........__........T",
+  "T.,,,,,..__..,,,,,.T",
+  "T.,,,,,..__..,,,,,.T",
+  "T.,,,,,..__..,,,,,.T",
+  "T........__........T",
+  "TTTTTT...__...TTTTTT",
+  "T,,,,....__....,,,,T",
+  "T,,,,....__....,,,,T",
+  "T........__........T",
+  "T..ffffff__ffffff..T",
+  "T........__........T",
+  "T..,,,,,,,,,,,,,,..T",
+  "T..,,,,,,,,,,,,,,..T",
+  "T..,,,,,,,,,,,,,,..T",
+  "T........__........T",
+  "T.~~~~...__...S....T",
+  "T.~~~~...__........T",
+  "T........__....,,,.T",
+  "TTTTTTTTT__TTTTTTTTT"]},
+ city:{name:'法克市',rows:[
+  "TTTTTTTTTTTTTTTTTTTT",
+  "T..................T",
+  "T....GGGGGGGGGG....T",
+  "T....GGGGGGGGGG....T",
+  "T....HHHHDHHHHH....T",
+  "T........__S.......T",
+  "T.CCCC...__........T",
+  "T.CCCC...__........T",
+  "T.HDHH...__...F.F..T",
+  "T..________.....F..T",
+  "T........__........T",
+  "T.FF.....__.....FF.T",
+  "TTTTTTTTT__TTTTTTTTT"]},
+ netcafe:{name:'法克網咖',inside:true,rows:[
+  "WWWWWWWWW",
+  "WPPoooPPW",
+  "WooKKKooW",
+  "WoooooooW",
+  "WPoooooPW",
+  "WoooooooW",
+  "WWWWXWWWW"]},
+ gym:{name:'法克市道館',inside:true,rows:[
+  "WWWWWWWWWWW",
+  "WgggggggggW",
+  "WgggggggggW",
+  "WgggggggggW",
+  "WQQQQgQQQQW",
+  "WgggggggggW",
+  "WgggggggggW",
+  "WQQQggQQQQW",
+  "WgggggggggW",
+  "WgggggggggW",
+  "WgggggggggW",
+  "WgggggggggW",
+  "WWWWWXWWWWW"]},
+};
+for(const k in MAPS){const m=MAPS[k];m.h=m.rows.length;m.w=m.rows[0].length;m.rows.forEach((r,i)=>{if(r.length!==m.w)console.error('map width',k,i,r.length)})}
+const WARPS={
+ home:[{x:4,y:7,to:'town',tx:3,ty:5,dir:'down'}],
+ town:[{x:3,y:4,to:'home',tx:4,ty:6,dir:'up'},{x:15,y:4,to:'lab',tx:5,ty:7,dir:'up'},{x:9,y:0,to:'route',tx:9,ty:18,dir:'up'},{x:10,y:0,to:'route',tx:10,ty:18,dir:'up'}],
+ lab:[{x:5,y:8,to:'town',tx:15,ty:5,dir:'down'}],
+ route:[{x:9,y:19,to:'town',tx:9,ty:1,dir:'down'},{x:10,y:19,to:'town',tx:10,ty:1,dir:'down'},{x:9,y:0,to:'city',tx:9,ty:11,dir:'up'},{x:10,y:0,to:'city',tx:10,ty:11,dir:'up'}],
+ city:[{x:9,y:12,to:'route',tx:9,ty:1,dir:'down'},{x:10,y:12,to:'route',tx:10,ty:1,dir:'down'},{x:3,y:8,to:'netcafe',tx:4,ty:5,dir:'up'},{x:9,y:4,to:'gym',tx:5,ty:11,dir:'up'}],
+ netcafe:[{x:4,y:6,to:'city',tx:3,ty:9,dir:'down'}],
+ gym:[{x:5,y:12,to:'city',tx:9,ty:5,dir:'down'}],
+};
+const SIGNS={
+ 'town,13,8':'法克鎮\n～一切故事，從這裡開台～',
+ 'route,14,16':'一號道路\n北：法克市　　南：法克鎮',
+ 'city,11,5':'法克市道館　館主：法克大老闆\n「No Script，只有真實互動。」',
+};
+const WILD={route:y=>y>=11?[['puff',2,4],['datou',2,4],['axian',3,4]]:[['axian',3,5],['sunsun',3,5],['puff',4,5],['datou',4,5]]};
+const tileAt=(m,x,y)=>{const M=MAPS[m];if(x<0||y<0||x>=M.w||y>=M.h)return null;return M.rows[y][x]};
+
+// ================= 遊戲狀態 =================
+let G,F;
+function newGame(){G={name:'阿法',map:'home',x:5,y:5,dir:'up',party:[],bag:{tea:0,card:0},flags:{},heal:{map:'home',x:5,y:4},defeated:{}};F=G.flags}
+newGame();
+let mode='title',busy=false,B=null;
+const WALK=1.25;// 每格約 0.21 秒（數字越小走越慢）
+const P={moving:false,prog:0,dx:0,dy:0,steps:0,turnWait:0,scripted:null};
+const UI={dlg:null,menu:null,preview:null,fade:0,white:0,bang:null,banner:null,badge:false,bprompt:null,moveInfo:null,introSpr:null};
+const DIRV={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
+const OPP={up:'down',down:'up',left:'right',right:'left'};
+
+// ================= 音效 =================
+let AC=null,muted=false;
+function initAudio(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{})}
+function tone(f,d,type='square',vol=.04,when=0,f2){if(!AC||muted)return;const t=AC.currentTime+when;const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d+.02)}
+const SFX={
+  blip:()=>tone(1200,.03,'square',.02),sel:()=>tone(880,.06),bump:()=>tone(90,.08,'square',.05),door:()=>{tone(300,.08);tone(200,.1,'square',.04,.08)},
+  hit:()=>{tone(220,.12,'sawtooth',.07,0,60)},super:()=>{tone(400,.08,'sawtooth',.07,0,100);tone(150,.18,'sawtooth',.07,.08,40)},weak:()=>tone(160,.12,'triangle',.07,0,90),
+  faint:()=>tone(600,.6,'square',.05,0,60),stat:up=>{for(let i=0;i<5;i++)tone(up?400+i*120:900-i*120,.06,'square',.03,i*.05)},
+  jingle:()=>{[523,659,784,1047].forEach((f,i)=>tone(f,.16,'square',.05,i*.12))},
+  heal:()=>{[659,784,988,784,1319].forEach((f,i)=>tone(f,.14,'triangle',.07,i*.13))},
+  lvl:()=>{[523,659,784,659,1047].forEach((f,i)=>tone(f,.12,'square',.05,i*.09))},
+  shake:()=>tone(180,.08,'square',.05),pop:()=>tone(500,.12,'square',.05,0,1200),
+  encounter:()=>{for(let i=0;i<8;i++)tone(300+((i%2)*200),.07,'square',.05,i*.06)},
+  fanfare:()=>{[[523,.15],[523,.15],[523,.15],[659,.45],[587,.15],[659,.15],[784,.7]].reduce((t,[f,d])=>{tone(f,d,'square',.06,t);tone(f/2,d,'triangle',.06,t);return t+d},0)},
+};
+document.getElementById('mute').onclick=e=>{muted=!muted;e.target.textContent='音效：'+(muted?'關':'開')};
+
+// ================= 動畫 =================
+const anims=[];
+function tween(ms,fn){return new Promise(res=>{anims.push({t0:performance.now(),ms,fn,res})})}
+const fadeOut=(ms=200)=>tween(ms,p=>UI.fade=p);
+const fadeIn=(ms=200)=>tween(ms,p=>UI.fade=1-p);
+
+// ================= 文字/對話/選單 =================
+function wrapText(s,maxW,size){ctx.font=`700 ${size}px ${FONT}`;const out=[];
+  for(const para of s.split('\n')){let cur='';for(const ch of para){const t=cur+ch;if(ctx.measureText(t).width>maxW&&cur){out.push(cur);cur=ch}else cur=t}out.push(cur)}return out}
+function say(s,opt={}){s=s.split('{N}').join(G.name);const lines=wrapText(s,mode==='battle'?440:436,16);const pages=[];
+  for(let i=0;i<lines.length;i+=2)pages.push(lines.slice(i,i+2));
+  return new Promise(res=>{UI.dlg={pages,page:0,chars:0,res,wait:opt.wait||0,t:0,keep:opt.keep,done:false}})}
+function pageLen(d){return d.pages[d.page].join('').length}
+function updDlg(){const d=UI.dlg;if(!d||d.done)return;const L=pageLen(d);
+  if(d.chars<L){d.chars=Math.min(L,d.chars+1.6);if(frame%3===0)SFX.blip();return}
+  if(d.page===d.pages.length-1&&d.keep){d.done=true;d.res();return}
+  if(d.wait){d.t+=16.7;if(d.t>=d.wait)advDlg()}}
+function advDlg(){const d=UI.dlg;if(!d||d.done)return;
+  if(d.chars<pageLen(d)){d.chars=pageLen(d);return}
+  if(d.page<d.pages.length-1){d.page++;d.chars=0;d.t=0;return}
+  UI.dlg=null;d.res()}
+function choose(opts,o={}){return new Promise(res=>{UI.menu=Object.assign({x:160,y:60,w:76,cols:1,cancel:true,rowH:15,style:'light'},o,{opts,idx:o.idx||0,res});if(o.onMove)o.onMove(UI.menu.idx)})}
+function handleMenu(b){const m=UI.menu,n=m.opts.length;let i=m.idx;
+  if(b==='up')i-=m.cols;else if(b==='down')i+=m.cols;else if(b==='left'&&m.cols>1&&i%m.cols>0)i--;else if(b==='right'&&m.cols>1&&i%m.cols<m.cols-1)i++;
+  else if(b==='a'||b==='start'){SFX.sel();UI.menu=null;m.res(m.idx);return}
+  else if(b==='b'&&m.cancel){SFX.sel();UI.menu=null;m.res(-1);return}
+  if(i>=0&&i<n&&i!==m.idx){m.idx=i;SFX.blip();if(m.onMove)m.onMove(i)}}
+
+// ================= 輸入 =================
+const held={};const pressQ=[];
+const KEYMAP={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',w:'up',s:'down',a:'left',d:'right',W:'up',S:'down',A:'left',D:'right',z:'a',Z:'a',' ':'a',j:'a',x:'b',X:'b',k:'b',Escape:'b',Backspace:'b',Enter:'start'};
+function press(b){initAudio();
+  if(UI.menu){handleMenu(b);return}
+  if(UI.dlg){if(!UI.dlg.done&&(b==='a'||b==='b'||b==='start'))advDlg();return}
+  pressQ.push(b);if(pressQ.length>3)pressQ.shift()}
+addEventListener('keydown',e=>{if(document.activeElement&&document.activeElement.tagName==='INPUT')return;const b=KEYMAP[e.key];if(!b)return;e.preventDefault();
+  if(e.repeat){if(UI.menu&&['up','down','left','right'].includes(b))handleMenu(b);held[b]=true;return}held[b]=true;press(b)});
+addEventListener('keyup',e=>{const b=KEYMAP[e.key];if(b)held[b]=false});
+addEventListener('blur',()=>{for(const k in held)held[k]=false});
+document.querySelectorAll('[data-k]').forEach(el=>{const k=el.dataset.k;
+  el.addEventListener('pointerdown',e=>{e.preventDefault();held[k]=true;press(k)});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,()=>held[k]=false))});
+function heldDir(){for(const d of['up','down','left','right'])if(held[d])return d;return null}
+
+// ================= NPC =================
+const NPCS=[
+ {id:'mom',map:'home',x:6,y:3,dir:'down',look:LOOK.mom,talk:momTalk},
+ {id:'prof',map:'lab',x:5,y:2,dir:'down',look:LOOK.prof,talk:profTalk},
+ {id:'aide',map:'lab',x:8,y:6,dir:'left',look:LOOK.aide,talk:async()=>{await say('助手：夥伴受傷的話，可以回家找媽媽，或到法克市的網咖休息。');await say('助手：按 START（Enter）可以打開選單，查看隊伍和背包喔。')}},
+ {id:'oldman',map:'town',x:6,y:6,dir:'down',look:LOOK.oldman,talk:async()=>{await say('大叔：法克娛樂？就是 2026 年成立的那個實況主聯合團體嘛！');await say('大叔：會長、副會長、公關、經紀人、老司機……什麼人才都有，No Script，只有真實互動！')}},
+ {id:'kid',map:'town',x:12,y:10,dir:'right',look:LOOK.kid,talk:async()=>{await say('小孩：聽說北邊的草叢會跳出 蓀蓀楠瓜 跟 哇洗阿賢 耶！');await say('小孩：我也好想訂閱牠們喔！')}},
+ {id:'viewer',map:'route',x:12,y:9,dir:'left',look:LOOK.viewer,sight:3,trainer:{name:'觀眾 小明',team:[['puff',4],['datou',5]],
+   pre:['觀眾小明：喂！你也是法克娛樂的粉絲吧？','觀眾小明：我可是每台都有追的老觀眾！來對戰吧！'],lose:['觀眾小明：可惡……我要回去重看 VOD 了……'],
+   after:['觀眾小明：法克市的道館館主超強的，記得多抓幾隻夥伴再去挑戰。']}},
+ {id:'girl',map:'route',x:4,y:11,dir:'down',look:LOOK.girl,talk:async()=>{await say('少女：野生實況怪獸的 HP 越低，訂閱卡就越容易成功喔！');await say('少女：等牠的 HP 條變紅再丟，成功率最高！')}},
+ {id:'clerk',map:'netcafe',x:4,y:1,dir:'down',look:LOOK.clerk,talk:clerkTalk},
+ {id:'gamer',map:'netcafe',x:2,y:3,dir:'up',look:LOOK.gamer,talk:async()=>{await say('玩家：噓……我在打牌位，別吵我。');await say('玩家：……唉，又輸了。都是隊友的錯。')}},
+ {id:'fan',map:'city',x:15,y:7,dir:'left',look:LOOK.fan,talk:fanTalk},
+ {id:'passer',map:'city',x:7,y:10,dir:'right',look:LOOK.passer,talk:async()=>{await say('路人：館主的王牌是棋靈王「酷酷的斜音梗」，TFT 世界第八名！');await say('路人：不過戰棋系很怕雜談系跟魅力系，一被干擾就容易翻車。')}},
+ {id:'trainee',map:'gym',x:5,y:7,dir:'down',look:LOOK.trainee,sight:3,trainer:{name:'練習生 阿傑',bg:'gym',team:[['axian',7]],
+   pre:['練習生阿傑：我是被阿賢挖角進來的！想見館主？先過我這關！'],lose:['練習生阿傑：……我還要再多練幾場排位。'],after:['練習生阿傑：老闆就在最裡面，祝你好運。']}},
+ {id:'hint',map:'gym',x:7,y:11,dir:'left',look:LOOK.hint,talk:async()=>{await say('攻略大叔：嘿！未來的榮譽會員！');await say('攻略大叔：館主會派出 傑尼尼尼 跟王牌 酷酷的斜音梗。');await say('攻略大叔：傑尼尼尼是雜談系，FPS 招式打她最痛！');await say('攻略大叔：酷酷的斜音梗是戰棋系，怕雜談系和魅力系！');await say('攻略大叔：等級最好練到 10 左右再挑戰喔。')}},
+ {id:'boss',map:'gym',x:5,y:2,dir:'down',look:LOOK.boss,talk:bossTalk},
+];
+NPCS.forEach(n=>{n.ox=0;n.oy=0;n.fr=0;n.home={x:n.x,y:n.y,dir:n.dir}});
+const npcsHere=()=>NPCS.filter(n=>n.map===G.map);
+const npcAt=(x,y)=>npcsHere().find(n=>n.x===x&&n.y===y);
+function walkable(x,y){const t=tileAt(G.map,x,y);if(t===null||SOLID.has(t))return false;return!npcAt(x,y)}
+
+// ================= 劇情腳本 =================
+async function runScript(fn){if(busy)return;busy=true;try{await fn()}catch(e){console.error(e)}finally{busy=false;pressQ.length=0}}
+function healAll(){G.party.forEach(m=>m.hp=m.maxhp)}
+async function healFx(){SFX.heal();await tween(300,p=>UI.white=p*.8);await tween(500,p=>UI.white=.8*(1-p))}
+function showBanner(){const M=MAPS[G.map];if(M.inside)return;UI.banner={text:M.name,t0:performance.now()}}
+async function getItem(text){SFX.jingle();await say(text)}
+
+async function momTalk(){
+  if(!F.mom){
+    await say('媽媽：{N}，早安！今天終於要出門冒險啦？');
+    await say('媽媽：法克博士說他在研究所等你，要送你第一隻實況怪獸喔！');
+    await say('媽媽：聽說法克市道館的館主很強，打贏他就能拿到「法克娛樂榮譽會員徽章」！');
+    await say('媽媽：這些珍奶帶在身上，累了就喝一杯。');
+    G.bag.tea+=3;await getItem('{N} 得到了 珍奶 ×3！');
+    await say('媽媽：路上小心！累了隨時回家休息喔！');F.mom=true;return}
+  if(!G.party.length){await say('媽媽：博士的研究所就在鎮上右邊，藍色屋頂那棟！');return}
+  await say('媽媽：{N}，你看起來好累，休息一下吧！');healAll();G.heal={map:'home',x:5,y:4};await healFx();
+  await say('（夥伴們都恢復精神了！）');await say(F.leader?'媽媽：榮譽會員回來啦！媽媽有在聊天室幫你刷 +1 喔！':'媽媽：加油！媽媽會開台幫你應援的！')}
+async function profIntro(){
+  const p=NPCS.find(n=>n.id==='prof');p.dir='down';
+  await say('博士：喔喔！你就是 {N} 吧！我等你很久了！');
+  await say('博士：我是研究實況怪獸的法克博士。');
+  await say('博士：這個世界上，住著一種叫做「實況怪獸」的神奇生物。');
+  await say('博士：牠們有的是 FPS 槍神、有的專精 MOBA、有的是戰棋高手，還有的光靠魅力跟雜談就能征服聊天室！');
+  await say('博士：而最強的一群實況怪獸，全都隸屬於傳說中的「法克娛樂」……');
+  await say('博士：好了！桌上有三顆直播膠囊，裡面各有一隻實況怪獸。');
+  await say('博士：選一隻當你的夥伴吧！（走到桌子前按 A 查看）');F.metProf=true}
+async function profTalk(){
+  if(!F.metProf)return profIntro();
+  if(!F.starter)return say('博士：桌上的三顆直播膠囊，選一個你喜歡的吧！');
+  if(F.leader)return say('博士：你拿到榮譽會員徽章了？太了不起了！我果然沒看錯人！');
+  await say('博士：記住屬性相剋！FPS 剋 雜談、雜談 剋 魅力、魅力 剋 FPS。');
+  await say('博士：戰棋系怕雜談和魅力，MOBA 則剋雜談和 FPS！')}
+async function pickStarter(i){
+  const sp=STARTERS[i],s=SP[sp];
+  if(F.starter){await say(F.starter===sp?'桌上空空的。':'這是要留給其他訓練師的直播膠囊。');return}
+  if(!F.metProf)return profIntro();
+  UI.preview=sp;
+  await say(`這是 ${s.type} 系的「${s.name}」！\n${s.desc}`);
+  await say(`要選擇 ${s.name} 嗎？`,{keep:true});
+  const r=await choose(['是','否'],{x:188,y:72,w:48});
+  UI.dlg=null;UI.preview=null;if(r!==0)return;
+  F.starter=sp;G.party.push(makeMon(sp,5));
+  await getItem(`{N} 得到了「${s.name}」！`);
+  const p=NPCS.find(n=>n.id==='prof');p.dir=G.x<5?'left':G.x>5?'right':'down';
+  await say(`博士：喔！${s.name} 看起來很喜歡你呢！`);
+  await say('博士：對了，這些也給你。');G.bag.card+=5;await getItem('{N} 得到了 訂閱卡 ×5！');
+  await say('博士：在草叢遇到野生的實況怪獸時，丟出訂閱卡，牠就有機會加入你的隊伍！');
+  await say('博士：先把對方的 HP 打低，成功率會更高喔。');
+  await say('博士：往北穿過一號道路就是法克市。');
+  await say('博士：去挑戰道館館主，拿下「法克娛樂榮譽會員徽章」吧！')}
+async function clerkTalk(){
+  await say('店員：歡迎光臨法克網咖！要讓夥伴在這裡休息一下嗎？',{keep:true});
+  const r=await choose(['休息','不用'],{x:180,y:72,w:56});UI.dlg=null;
+  if(r!==0){await say('店員：歡迎隨時再來！');return}
+  await say('店員：好的，幫你開一台包廂，請稍等……');healAll();G.heal={map:'netcafe',x:4,y:3};await healFx();
+  await say('店員：你的夥伴都恢復精神了！歡迎再來！')}
+async function fanTalk(){
+  if(!F.fan){await say('粉絲：哇！你也是法克粉？要去挑戰道館對吧！');await say('粉絲：這些拿去用，祝你成功！');
+    G.bag.card+=5;G.bag.tea+=3;F.fan=true;await getItem('{N} 得到了 訂閱卡 ×5 和 珍奶 ×3！');return}
+  await say('粉絲：加油！我會在聊天室幫你刷 +1 的！')}
+async function bossTalk(n){
+  if(F.leader){await say('法克大老闆：榮譽會員，隨時歡迎回來開台！');return}
+  await say('法克大老闆：歡迎來到法克市道館！');
+  await say('法克大老闆：我是這裡的館主，也是法克娛樂的大老闆！');
+  await say('法克大老闆：在我們法克娛樂，沒有劇本，只有真實互動！');
+  await say('法克大老闆：讓我看看你和夥伴之間，有多真實的羈絆吧！');
+  const r=await battle({trainer:{name:'館主 法克大老闆',look:LOOK.boss,team:[makeMon('jeni',8),makeMon('cool',10)],lose:['法克大老闆：……哈哈哈哈！精彩！太精彩了！']},bg:'gym'});
+  if(r==='lose'){await blackout();return}
+  await fadeIn(300);
+  await say('法克大老闆：你和夥伴之間的互動，比任何劇本都還要真實！');
+  await say('法克大老闆：我正式承認你——');
+  await say('法克大老闆：這是證明你實力的徽章，收下吧！');
+  UI.badge=true;SFX.fanfare();await sleep(400);
+  await say('{N} 得到了「法克娛樂榮譽會員徽章」！');UI.badge=false;
+  await say('法克大老闆：從今天起，你就是法克娛樂的榮譽會員了！');
+  await say('法克大老闆：歡迎加入！No Script，只有真實互動！');
+  F.leader=true;saveGame();await ending()}
+
+async function scriptedStep(dir){G.dir=dir;const[dx,dy]=DIRV[dir];P.dx=dx;P.dy=dy;P.prog=0;P.moving=true;
+  await new Promise(r=>P.scripted=r)}
+async function npcStep(n,dir){n.dir=dir;const[dx,dy]=DIRV[dir];let k=0;
+  await tween(240,p=>{n.ox=dx*16*p;n.oy=dy*16*p;n.fr=p<.5?(k%2?1:2):0});n.x+=dx;n.y+=dy;n.ox=n.oy=0;n.fr=0}
+async function warp(w){SFX.door();await fadeOut(180);G.map=w.to;G.x=w.tx;G.y=w.ty;G.dir=w.dir||G.dir;await fadeIn(180);showBanner()}
+async function momStop(w){const m=NPCS.find(n=>n.id==='mom');m.dir='down';
+  await say('媽媽：等一下！{N}！');await momTalk();await warp(w)}
+async function profStop(){
+  await say('？？？：喂——！等一下！');
+  await say('博士：草叢裡有野生的實況怪獸出沒，沒有夥伴太危險了！');
+  await say('博士：先來我的研究所吧！就是鎮上右邊，藍色屋頂那棟！');
+  await scriptedStep('down')}
+function sees(n){if(!n.sight||G.defeated[n.id])return false;const[dx,dy]=DIRV[n.dir];
+  for(let i=1;i<=n.sight;i++){const x=n.x+dx*i,y=n.y+dy*i;if(x===G.x&&y===G.y)return i;const t=tileAt(G.map,x,y);if(t===null||SOLID.has(t))return false}return false}
+async function trainerSpot(n,dist){
+  SFX.encounter();UI.bang=n;await sleep(700);UI.bang=null;
+  for(let i=1;i<dist;i++)await npcStep(n,n.dir);
+  G.dir=OPP[n.dir];await trainerFight(n)}
+async function trainerFight(n){const T=n.trainer;
+  for(const l of T.pre)await say(l);
+  const r=await battle({trainer:{name:T.name,look:n.look,team:T.team.map(([s,l])=>makeMon(s,l)),lose:T.lose},bg:T.bg});
+  if(r==='lose'){await blackout();return}
+  G.defeated[n.id]=true;await fadeIn(300)}
+async function wildEncounter(){const tab=WILD[G.map](G.y);const[s,a,b]=pick(tab);
+  const r=await battle({wild:makeMon(s,a+Math.floor(Math.random()*(b-a+1))),bg:'grass'});
+  if(r==='lose'){await blackout();return}await fadeIn(300)}
+async function blackout(){healAll();Object.assign(G,{map:G.heal.map,x:G.heal.x,y:G.heal.y,dir:'up'});await fadeIn(400);
+  await say('（{N} 急急忙忙地跑回了休息的地方……）');
+  if(G.map==='home')await say('媽媽：辛苦了！好好休息一下，再出發吧！');else await say('店員：你的夥伴都休息好了，再去挑戰吧！')}
+
+function onStep(){
+  const m=G.map;
+  if(m==='home'&&G.x===4&&G.y===7&&!F.mom){const w=WARPS.home[0];runScript(()=>momStop(w));return}
+  const w=(WARPS[m]||[]).find(w=>w.x===G.x&&w.y===G.y);if(w){runScript(()=>warp(w));return}
+  if(m==='town'&&G.y===1&&(G.x===9||G.x===10)&&!F.starter){runScript(profStop);return}
+  for(const n of npcsHere()){const d=sees(n);if(d){runScript(()=>trainerSpot(n,d));return}}
+  if(tileAt(m,G.x,G.y)===','&&G.party.length&&Math.random()<.12){runScript(wildEncounter)}
+}
+function interact(){const[dx,dy]=DIRV[G.dir];const fx=G.x+dx,fy=G.y+dy;const t=tileAt(G.map,fx,fy);
+  if(G.map==='lab'&&fy===3&&fx>=4&&fx<=6){runScript(()=>pickStarter(fx-4));return}
+  let n=npcAt(fx,fy);if(!n&&t==='K')n=npcAt(fx+dx,fy+dy);
+  if(n){runScript(async()=>{n.dir=OPP[G.dir];
+    if(n.trainer){if(G.defeated[n.id]){for(const l of n.trainer.after)await say(l)}else await trainerFight(n)}else await n.talk(n)});return}
+  const sg=SIGNS[`${G.map},${fx},${fy}`];if(sg){runScript(()=>say(sg));return}
+  if(t==='P'){runScript(()=>say(G.map==='netcafe'?'螢幕上正在播法克娛樂的實況！聊天室一直在刷 +1。':'電視正在重播法克娛樂的精華剪輯。'));return}
+  if(t==='B'){runScript(()=>say('書架上擺滿了實況怪獸的攻略本。'));return}}
+
+// ================= 選單（世界） =================
+function partyOpts(withCancel){const o=G.party.map(m=>({t:`${nm(m)}  Lv${m.lvl}`,r:`HP ${m.hp}/${m.maxhp}`,icon:MINI[m.sp],dim:m.hp<=0}));if(withCancel)o.push({t:'取消'});return o}
+async function worldMenu(){SFX.sel();
+  while(true){const c=await choose(['隊伍','背包','屬性表','存檔','關閉'],{x:176,y:4,w:60});
+    if(c<0||c===4)return;
+    if(c===0){if(!G.party.length){await say('你還沒有夥伴。');continue}await partyWorld()}
+    if(c===1)await bagWorld();
+    if(c===2){await say('FPS 剋 雜談，雜談 剋 魅力，魅力 剋 FPS。\n（反過來打效果不太好）');await say('雜談、魅力 剋 戰棋；戰棋 剋 MOBA；\nMOBA 剋 雜談、FPS。')}
+    if(c===3){await say(saveGame()?'{N} 把冒險紀錄存好了！':'這個瀏覽器不允許存檔……')}}}
+async function partyWorld(){
+  while(true){const i=await choose(partyOpts(true),{x:8,y:6,w:224,rowH:18});if(i<0||i>=G.party.length)return;
+    const m=G.party[i];const c=await choose(['設為首發','查看招式','取消'],{x:160,y:60,w:76});
+    if(c===0){G.party.splice(i,1);G.party.unshift(m);SFX.sel()}
+    if(c===1){await say(`${nm(m)}（${SP[m.sp].type}系）\n`+m.moves.map(k=>`${MV[k].name}`).join('、'))}}}
+async function bagWorld(){
+  const c=await choose([`珍奶 ×${G.bag.tea}`,`訂閱卡 ×${G.bag.card}`,'取消'],{x:140,y:60,w:96});
+  if(c===0){if(!G.bag.tea)return say('沒有珍奶了。');if(!G.party.length)return say('沒有可以喝的夥伴。');
+    const i=await choose(partyOpts(true),{x:8,y:6,w:224,rowH:18});if(i<0||i>=G.party.length)return;const m=G.party[i];
+    if(m.hp<=0)return say(`${nm(m)} 已經倒下了，要先去休息才行。`);if(m.hp===m.maxhp)return say('HP 已經是滿的了。');
+    G.bag.tea--;const h=Math.min(30,m.maxhp-m.hp);m.hp+=h;SFX.heal();await say(`${nm(m)} 喝了珍奶，回復了 ${h} HP！`)}
+  if(c===1)await say('在草叢遇到野生實況怪獸時，在戰鬥中使用。')}
+function saveGame(){try{localStorage.setItem('fuckent_rpg_save',JSON.stringify(G));return true}catch(e){return false}}
+function loadSave(peek){try{const s=localStorage.getItem('fuckent_rpg_save');if(!s)return false;if(peek)return true;G=JSON.parse(s);F=G.flags;
+  NPCS.forEach(n=>{n.x=n.home.x;n.y=n.home.y;n.dir=n.home.dir});return true}catch(e){return false}}
+
+// ================= 戰鬥 =================
+const stageMul=s=>s>=0?(2+s)/2:2/(2-s);
+function calcDmg(u,t,M,su,st){const A=u.atk*stageMul(su.atk),D=t.def*stageMul(st.def);
+  let d=((2*u.lvl/5+2)*M.pow*A/D)/50+2;if(SP[u.sp].type===M.type)d*=1.5;const eff=typeEff(M.type,SP[t.sp].type);d*=eff;
+  const crit=Math.random()<1/16;if(crit)d*=1.5;d*=.85+Math.random()*.15;return{d:Math.max(1,Math.floor(d)),eff,crit}}
+const pre=s=>s==='e'?(B.wild?'野生的 ':'對手的 '):'';
+async function battle(opt){
+  const wild=opt.wild||null,tr=opt.trainer||null;
+  B={wild:!!wild,tr,team:wild?[wild]:tr.team,ei:0,e:wild||tr.team[0],a:null,eVis:false,aVis:false,showE:false,showA:false,
+     eX:0,eY:0,aX:0,aY:0,dispE:0,dispA:0,dispX:0,bg:opt.bg||'grass',st:{a:{atk:0,def:0},e:{atk:0,def:0}},
+     trSpr:tr?charSprite(tr.look,'down',0):null,plSpr:charSprite(LOOK.player,'up',0),trX:0,plX:0,card:null,slide:1,blink:null,statFx:null,eShrink:0};
+  SFX.encounter();
+  for(let i=0;i<3;i++){await tween(70,p=>UI.fade=p);await tween(70,p=>UI.fade=1-p)}
+  await fadeOut(200);mode='battle';if(wild){B.eVis=true;B.dispE=wild.hp}await fadeIn(150);
+  await tween(600,p=>B.slide=1-p);B.slide=0;
+  if(wild){B.showE=true;await say(`野生的 ${nm(B.e)} 跳出來了！`)}
+  else{await say(`${tr.name} 想要對戰！`);await tween(300,p=>B.trX=p*120);B.trSpr=null;await sendEnemy(B.e)}
+  await tween(300,p=>B.plX=p*140);B.plSpr=null;
+  await sendAlly(G.party.find(m=>m.hp>0));
+  while(true){
+    UI.bprompt=`要讓 ${nm(B.a)}\n做什麼？`;
+    const c=await choose(['戰鬥','背包','隊伍','逃跑'],{x:124,y:112,w:116,h:48,cols:2,cancel:false,rowH:18,ytop:9});
+    UI.bprompt=null;let act=null;
+    if(c===0){const mi=await choose(B.a.moves.map(k=>MV[k].name),{x:0,y:112,w:160,h:48,cols:2,rowH:18,ytop:9,onMove:i=>UI.moveInfo=B.a.moves[i]});UI.moveInfo=null;if(mi<0)continue;act={t:'move',mv:B.a.moves[mi]}}
+    else if(c===1){const r=await battleBag();if(r==='cancel')continue;if(r==='caught')return endBattle('caught');act={t:'done'}}
+    else if(c===2){const i=await battlePartyPick(false);if(i<0)continue;await say(`${nm(B.a)}，回來吧！`,{wait:400});B.aVis=false;B.showA=false;await sendAlly(G.party[i]);act={t:'done'}}
+    else{if(!wild){await say('不行！訓練師對戰不能逃跑！');continue}
+      if(Math.random()<Math.min(1,.5+.5*B.a.spd/B.e.spd)){SFX.door();await say('順利逃走了！');return endBattle('run')}
+      await say('逃不掉！');act={t:'done'}}
+    const eMv=enemyMove();
+    const order=act.t==='move'?((B.a.spd>B.e.spd||(B.a.spd===B.e.spd&&Math.random()<.5))?['a','e']:['e','a']):['e'];
+    let ended=null;
+    for(const s of order){await useMove(s,s==='a'?act.mv:eMv);const r=await checkFaint();if(r){ended=r.end;break}}
+    if(ended)return endBattle(ended);
+  }
+}
+function enemyMove(){const ms=B.e.moves;const dmg=ms.filter(k=>MV[k].pow>0),st=ms.filter(k=>!MV[k].pow);
+  if(st.length&&Math.random()<.25)return pick(st);
+  if(!B.wild){const best=dmg.filter(k=>typeEff(MV[k].type,SP[B.a.sp].type)>1);if(best.length&&Math.random()<.6)return pick(best)}
+  return pick(dmg.length?dmg:ms)}
+async function sendEnemy(m){B.eShrink=1;B.e=m;B.st.e={atk:0,def:0};B.dispE=m.hp;B.eY=0;B.eVis=true;SFX.pop();
+  await tween(250,p=>B.eShrink=1-p);B.showE=true;await say(`${B.tr.name} 派出了 ${nm(m)}！`,{wait:500})}
+async function sendAlly(m){B.aShrink=1;B.a=m;B.st.a={atk:0,def:0};B.dispA=m.hp;B.dispX=expFrac(m);B.aY=0;B.aVis=true;SFX.pop();
+  await say(`去吧！${nm(m)}！`,{wait:300});await tween(250,p=>B.aShrink=1-p);B.showA=true;await sleep(200)}
+const expFrac=m=>clamp((m.exp-expFor(m.lvl))/(expFor(m.lvl+1)-expFor(m.lvl)),0,1);
+async function animHP(side,from,to,max){const key=side==='a'?'dispA':'dispE';await tween(300+Math.abs(from-to)/max*700,p=>B[key]=from+(to-from)*p);B[key]=to}
+async function useMove(s,id){
+  const u=s==='a'?B.a:B.e,t=s==='a'?B.e:B.a,ts=s==='a'?'e':'a',M=MV[id];
+  await say(`${pre(s)}${nm(u)} 使用了 ${M.name}！`,{wait:400});
+  if(Math.random()*100>=M.acc){await say('可是沒有命中！',{wait:500});return}
+  await tween(180,p=>{const v=Math.sin(p*Math.PI)*12;if(s==='a'){B.aX=v}else{B.eX=-v}});
+  if(M.pow>0){const r=calcDmg(u,t,M,B.st[s],B.st[ts]);
+    (r.eff>1?SFX.super:r.eff<1?SFX.weak:SFX.hit)();B.blink=ts;await sleep(420);B.blink=null;
+    const from=t.hp;t.hp=Math.max(0,t.hp-r.d);await animHP(ts,from,t.hp,t.maxhp);
+    if(r.crit)await say('會心一擊！',{wait:500});
+    if(r.eff>1)await say('效果拔群！',{wait:500});else if(r.eff<1)await say('效果不太好……',{wait:500});
+    if(M.recoil&&u.hp>1){const rc=Math.max(1,Math.floor(r.d*M.recoil)),f2=u.hp;u.hp=Math.max(1,u.hp-rc);await animHP(s,f2,u.hp,u.maxhp);await say(`${pre(s)}${nm(u)} 衝太快，自己也受到了傷害！`,{wait:500})}
+  }else{const[who,stat,delta]=M.fx;const side=who==='self'?s:ts,mon=who==='self'?u:t,st=B.st[side];const nv=clamp(st[stat]+delta,-6,6);
+    const label=stat==='atk'?'攻擊':'防禦',verb=delta>0?'提升':'下降';
+    if(nv===st[stat]){await say(`${pre(side)}${nm(mon)} 的${label}已經無法再${verb}了！`,{wait:500});return}
+    st[stat]=nv;SFX.stat(delta>0);B.statFx={side,up:delta>0,t:0};await tween(600,p=>B.statFx.t=p);B.statFx=null;
+    await say(`${pre(side)}${nm(mon)} 的${label}${verb}了！`,{wait:500})}}
+async function checkFaint(){
+  if(B.e.hp<=0){SFX.faint();await tween(400,p=>B.eY=p*70);B.eVis=false;B.showE=false;
+    await say(`${pre('e')}${nm(B.e)} 倒下了！`);
+    const gain=Math.floor(SP[B.e.sp].xp*B.e.lvl/7*(B.wild?1:1.5));await gainExp(B.a,gain);
+    if(!B.wild&&B.ei<B.team.length-1){B.ei++;await sendEnemy(B.team[B.ei]);return{cont:true}}
+    if(!B.wild){B.trSpr=charSprite(B.tr.look,'down',0);await tween(400,p=>B.trX=120*(1-p));await say(`你打贏了 ${B.tr.name}！`);for(const l of B.tr.lose)await say(l)}
+    return{end:'win'}}
+  if(B.a.hp<=0){SFX.faint();await tween(400,p=>B.aY=p*70);B.aVis=false;B.showA=false;
+    await say(`${nm(B.a)} 倒下了！`);
+    if(G.party.some(m=>m.hp>0)){const i=await battlePartyPick(true);await sendAlly(G.party[i]);return{cont:true}}
+    await say('{N} 的夥伴全部倒下了……');await say('{N} 眼前一片漆黑！');return{end:'lose'}}
+  return null}
+async function gainExp(m,n){await say(`${nm(m)} 獲得了 ${n} 點經驗值！`,{wait:400});m.exp+=n;
+  while(true){const from=B.dispX,to=expFrac(m)>=1||m.exp>=expFor(m.lvl+1)?1:expFrac(m);await tween(450,p=>B.dispX=from+(to-from)*p);
+    if(m.exp<expFor(m.lvl+1))break;
+    const old=m.maxhp;m.lvl++;calc(m);m.hp+=m.maxhp-old;B.dispA=m.hp;B.dispX=0;SFX.lvl();
+    await say(`${nm(m)} 升到了 Lv.${m.lvl}！`);
+    for(const[l,mv]of SP[m.sp].learn)if(l===m.lvl&&!m.moves.includes(mv))await learnMove(m,mv)}}
+async function learnMove(m,mv){
+  if(m.moves.length<4){m.moves.push(mv);SFX.jingle();await say(`${nm(m)} 學會了 ${MV[mv].name}！`);return}
+  await say(`${nm(m)} 想學新招式「${MV[mv].name}」，但已經會四招了。`);
+  await say('要忘掉哪一招呢？',{keep:true});
+  const i=await choose([...m.moves.map(k=>MV[k].name),'不學了'],{x:150,y:24,w:86});UI.dlg=null;
+  if(i<0||i>=4){await say(`${nm(m)} 沒有學會 ${MV[mv].name}。`);return}
+  const old=MV[m.moves[i]].name;m.moves[i]=mv;await say(`一、二……噗！${nm(m)} 忘掉了 ${old}，學會了 ${MV[mv].name}！`)}
+async function battlePartyPick(forced){
+  while(true){const first=Math.max(0,G.party.findIndex(m=>m.hp>0&&m!==B.a));const i=await choose(partyOpts(!forced),{x:8,y:6,w:224,rowH:18,cancel:!forced,idx:forced?first:0});
+    if(i<0||i>=G.party.length)return -1;const m=G.party[i];
+    if(m.hp<=0){await say(`${nm(m)} 已經沒有力氣戰鬥了！`);continue}
+    if(m===B.a&&B.a.hp>0){await say(`${nm(m)} 已經在場上了！`);continue}
+    return i}}
+async function battleBag(){
+  const c=await choose([`珍奶 ×${G.bag.tea}`,`訂閱卡 ×${G.bag.card}`,'取消'],{x:140,y:56,w:96});
+  if(c===0){if(!G.bag.tea){await say('沒有珍奶了！');return 'cancel'}if(B.a.hp===B.a.maxhp){await say('HP 已經是滿的了！');return 'cancel'}
+    G.bag.tea--;const from=B.a.hp,h=Math.min(30,B.a.maxhp-B.a.hp);B.a.hp+=h;SFX.heal();await animHP('a',from,B.a.hp,B.a.maxhp);
+    await say(`${nm(B.a)} 喝了珍奶，回復了 ${h} HP！`);return 'used'}
+  if(c===1){if(!B.wild){await say('不能對別人的夥伴丟訂閱卡！');return 'cancel'}if(!G.bag.card){await say('沒有訂閱卡了！');return 'cancel'}return throwCard()}
+  return 'cancel'}
+async function throwCard(){
+  G.bag.card--;await say('{N} 丟出了訂閱卡！',{wait:200});
+  B.card={x:60,y:90,rot:0};await tween(550,p=>{B.card.x=60+116*p;B.card.y=90-50*p-Math.sin(p*Math.PI)*40;B.card.rot=p*Math.PI*4});B.card.rot=0;
+  SFX.pop();await tween(300,p=>B.eShrink=p);B.eVis=false;B.eShrink=0;await tween(250,p=>B.card.y=40+p*20);
+  const m=B.e,p=Math.min(.95,SP[m.sp].catch/100*(1-.75*m.hp/m.maxhp)+.12),q=Math.cbrt(p);let k=0;
+  for(;k<3;k++){await sleep(450);if(Math.random()>q)break;SFX.shake();await tween(350,pp=>B.card.rot=Math.sin(pp*Math.PI*2)*.5);B.card.rot=0}
+  if(k===3){SFX.jingle();B.card.star=true;await say(`成功了！${nm(m)} 訂閱了你！`);
+    if(G.party.length<6){G.party.push(m);await say(`${nm(m)} 加入了隊伍！`)}else await say('隊伍滿了……牠先回去開台了。');return 'caught'}
+  B.card=null;B.eVis=true;SFX.pop();await tween(200,p=>B.eShrink=1-p);
+  await say(['噢不！牠馬上取消訂閱了！','可惡！差一點點就訂閱了！','只差一點點！'][k]);return 'used'}
+async function endBattle(r){await fadeOut(350);mode='world';B=null;UI.moveInfo=null;UI.bprompt=null;return r}
+
+// ================= 結局 =================
+let END=null;
+async function ending(){await fadeOut(600);mode='ending';END={t0:performance.now(),done:false};await fadeIn(600);
+  await new Promise(r=>END.res=r);await fadeOut(500);mode='title';END=null;await fadeIn(500)}
+const CREDITS=['～ 法克娛樂：實況怪獸 ～','','恭喜 {N}','成為法克娛樂榮譽會員！','','— 登場成員 —','一韓小串文　會長','麻辣布丁狗　副會長','黃金酷辣雞腿排　最美公關','4泡芙拉　空氣檢測員','哇洗阿賢　經紀人','大頭大頭大頭　老司機','蓀蓀楠瓜　仙女下凡','傑尼尼尼　幫主','酷酷的斜音梗　棋靈王','','— 特別感謝 —','每一位在聊天室刷 +1 的觀眾','','No Script，只有真實互動。','','THE END'];
+
+// ================= 標題 / 開場 =================
+async function titleFlow(){SFX.sel();const has=loadSave(true);
+  const opts=has?['繼續遊戲','新遊戲']:['新遊戲'];const c=await choose(opts,{x:84,y:108,w:72,cancel:true});if(c<0)return;
+  if(has&&c===0){await fadeOut(300);loadSave();mode='world';await fadeIn(300);showBanner();return}
+  await fadeOut(300);newGame();mode='intro';UI.introSpr=charSprite(LOOK.prof,'down',0);await fadeIn(300);
+  await say('歡迎來到實況怪獸的世界！');await say('我是法克博士。');
+  await say('在開始冒險之前，先告訴我你的名字吧！',{keep:true});
+  const i=await choose(['阿法','小克','法克新人','自己輸入…'],{x:150,y:30,w:86});UI.dlg=null;
+  G.name=i===3?await askName():(['阿法','小克','法克新人'][i]||'阿法');
+  UI.introSpr=charSprite(LOOK.player,'down',0);
+  await say('{N}，對吧！好名字！');await say('你的冒險，就要從法克鎮開始了！');await say('出發吧！成為法克娛樂的榮譽會員！');
+  await fadeOut(400);UI.introSpr=null;mode='world';await fadeIn(400);
+  await say('（今天就是出門冒險的日子！）');await say('（先跟媽媽打聲招呼吧。）')}
+function askName(){return new Promise(res=>{const box=document.getElementById('nameBox'),inp=document.getElementById('nameIn'),ok=document.getElementById('nameOk');
+  box.style.display='flex';inp.value='';setTimeout(()=>inp.focus(),50);
+  const done=()=>{const v=inp.value.trim().slice(0,8)||'阿法';box.style.display='none';inp.blur();ok.onclick=null;inp.onkeydown=null;res(v)};
+  ok.onclick=done;inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();done()}}})}
+
+// ================= 更新 =================
+function update(){
+  updDlg();
+  if(mode==='title'){const b=pressQ.shift();if((b==='a'||b==='start')&&!busy)runScript(titleFlow);return}
+  if(mode==='ending'){const b=pressQ.shift();if(END&&END.done&&(b==='a'||b==='start')&&END.res){const r=END.res;END.res=null;r()}return}
+  if(mode!=='world')return;
+  if(P.moving){P.prog+=WALK;if(P.prog>=16){G.x+=P.dx;G.y+=P.dy;P.moving=false;P.prog=0;P.steps++;
+      if(P.scripted){const r=P.scripted;P.scripted=null;r()}else onStep()}return}
+  if(busy||UI.dlg||UI.menu)return;
+  const b=pressQ.shift();
+  if(b==='a'){interact();return}
+  if(b==='start'){runScript(worldMenu);return}
+  const d=heldDir();
+  if(d){if(G.dir!==d){G.dir=d;P.turnWait=6;return}if(P.turnWait>0){P.turnWait--;return}
+    const[dx,dy]=DIRV[d];if(walkable(G.x+dx,G.y+dy)){P.dx=dx;P.dy=dy;P.moving=true;P.prog=0}else if(frame%18===0)SFX.bump()}
+  else P.turnWait=0}
+
+// ================= 繪製 =================
+function nR(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x*S),Math.round(y*S),Math.round(w*S),Math.round(h*S))}
+function txt(s,x,y,o={}){const size=o.size||16;ctx.font=`700 ${size}px ${FONT}`;ctx.textBaseline='top';ctx.textAlign=o.align||'left';
+  if(o.shadow!==false){ctx.fillStyle=o.sh||'#c8c8c0';ctx.fillText(s,x*S+2,y*S+2)}ctx.fillStyle=o.col||'#383838';ctx.fillText(s,x*S,y*S);ctx.textAlign='left'}
+function img(c,x,y,w,h,flip){w=w||c.width;h=h||c.height;if(flip){ctx.save();ctx.translate(Math.round((x+w)*S),Math.round(y*S));ctx.scale(-1,1);ctx.drawImage(c,0,0,w*S,h*S);ctx.restore()}else ctx.drawImage(c,Math.round(x*S),Math.round(y*S),w*S,h*S)}
+function box(x,y,w,h,st='light'){if(st==='light'){nR(x,y,w,h,'#384858');nR(x+1,y+1,w-2,h-2,'#98b8d8');nR(x+2,y+2,w-4,h-4,'#f8f8f8')}
+  else{nR(x,y,w,h,'#202830');nR(x+1,y+1,w-2,h-2,'#d0a048');nR(x+2,y+2,w-4,h-4,'#2a5068')}}
+const TXT_LIGHT={col:'#383838',sh:'#d0d0c8'},TXT_DARK={col:'#f8f8f8',sh:'#1a2a38'};
+
+function renderWorld(){
+  const M=MAPS[G.map];
+  const px=G.x*16+(P.moving?P.dx*P.prog:0),py=G.y*16+(P.moving?P.dy*P.prog:0);
+  let cx=px+8-120,cy=py+8-80;
+  cx=M.w*16>W?clamp(cx,0,M.w*16-W):(M.w*16-W)/2;cy=M.h*16>H?clamp(cy,0,M.h*16-H):(M.h*16-H)/2;
+  cx=Math.round(cx);cy=Math.round(cy);
+  nR(0,0,W,H,M.inside?'#000':'#2f8a3c');
+  const x0=Math.floor(cx/16),y0=Math.floor(cy/16);
+  for(let ty=y0;ty<=y0+11;ty++)for(let tx=x0;tx<=x0+16;tx++){let t=tileAt(G.map,tx,ty);if(t===null){if(M.inside)continue;t='T'}
+    let tile=TL[t];if(Array.isArray(tile))tile=tile[Math.floor(frame/40)%2];img(tile,tx*16-cx,ty*16-cy)}
+  if(G.map==='lab')STARTERS.forEach((s,i)=>{if(F.starter!==s)img(CAPSULE,(4+i)*16-cx+2,3*16-cy+1)});
+  const ents=npcsHere().map(n=>({y:n.y*16+n.oy,draw:()=>img(charSprite(n.look,n.dir,n.fr),n.x*16+n.ox-cx,n.y*16+n.oy-cy-3)}));
+  const fr=P.moving&&P.prog>=4&&P.prog<12?(P.steps%2?1:2):0;
+  ents.push({y:py,draw:()=>img(charSprite(LOOK.player,G.dir,fr),px-cx,py-cy-3)});
+  ents.sort((a,b)=>a.y-b.y).forEach(e=>e.draw());
+  if(G.map==='route'||G.map==='town'||G.map==='city'){const t=tileAt(G.map,G.x,G.y);if(t===','&&!P.moving){ctx.drawImage(TL[','],0,8,16,8,(px-cx)*S,(py-cy+8)*S,32,16)}}
+  if(UI.bang){const n=UI.bang;const bx=n.x*16-cx+3,by=n.y*16-cy-17;nR(bx,by,10,12,'#202030');nR(bx+1,by+1,8,10,'#fff');nR(bx+4,by+2,2,5,'#e03030');nR(bx+4,by+8,2,2,'#e03030')}
+  if(UI.banner){const t=(performance.now()-UI.banner.t0)/1000;if(t>2.6)UI.banner=null;else{const off=t<.3?(1-t/.3)*-24:t>2.2?((t-2.2)/.4)*-24:0;
+    box(4,4+off,84,20);txt(UI.banner.text,46,8+off,Object.assign({align:'center'},TXT_LIGHT))}}
+  if(UI.preview){box(84,10,72,74);img(MONSPR[UI.preview],88,14,64,64);const s=SP[UI.preview];nR(120-16,76,32,6,TYPECOL[s.type])}
+}
+function hpCol(f){return f>.5?'#48c858':f>.2?'#f0c030':'#e84040'}
+function hpBox(m,x,y,w,h,disp,ally){box(x,y,w,h);
+  txt(nm(m),x+6,y+3,Object.assign({size:14},TXT_LIGHT));txt('Lv'+m.lvl,x+w-6,y+3,Object.assign({size:14,align:'right'},TXT_LIGHT));
+  nR(x+6,y+15,22,6,'#405060');txt('HP',x+9,y+14.5,{size:11,col:'#f8d050',shadow:false});
+  nR(x+28,y+15,w-36,6,'#405060');const f=clamp(disp/m.maxhp,0,1);nR(x+29,y+16,(w-38)*f,4,hpCol(f));
+  if(ally){txt(`${Math.ceil(disp)}/${m.maxhp}`,x+w-8,y+22,Object.assign({size:14,align:'right'},TXT_LIGHT));
+    nR(x+6,y+h-6,w-12,3,'#405060');nR(x+7,y+h-5,(w-14)*clamp(B.dispX,0,1),1,'#48a8f8')}}
+function drawMon(m,cx,bottom,back,offX,offY,shrink){
+  const sz=64*(1-(shrink||0));if(sz<=1)return;
+  ctx.save();ctx.beginPath();ctx.rect(0,0,W*S,bottom*S);ctx.clip();
+  img(MONSPR[m.sp],cx-sz/2+offX,bottom-sz+offY-(64-sz)/2*0,sz,sz,back);ctx.restore()}
+function renderBattle(){
+  const gym=B.bg==='gym';
+  nR(0,0,W,112,gym?'#e6dcff':'#f4f8e0');nR(0,30,W,82,gym?'#cdbff0':'#d8eec0');
+  for(let i=0;i<6;i++)nR(0,36+i*12,W,1,gym?'#c0b0e8':'#c8e4b0');
+  const sl=B.slide*240;
+  ctx.fillStyle=gym?'#a898d8':'#a8d890';ctx.beginPath();ctx.ellipse((176-sl)*S,66*S,46*S,11*S,0,0,7);ctx.fill();
+  ctx.fillStyle=gym?'#8878c0':'#88c070';ctx.beginPath();ctx.ellipse((176-sl)*S,67*S,40*S,8*S,0,0,7);ctx.fill();
+  ctx.fillStyle=gym?'#a898d8':'#a8d890';ctx.beginPath();ctx.ellipse((64+sl)*S,110*S,58*S,12*S,0,0,7);ctx.fill();
+  ctx.fillStyle=gym?'#8878c0':'#88c070';ctx.beginPath();ctx.ellipse((64+sl)*S,111*S,50*S,9*S,0,0,7);ctx.fill();
+  if(B.trSpr)img(B.trSpr,176-32-sl+B.trX,4,64,64);
+  else if(B.eVis&&!(B.blink==='e'&&Math.floor(frame/4)%2))drawMon(B.e,176-sl,68+B.eY*0,false,B.eX,B.eY,B.eShrink);
+  if(B.plSpr)img(B.plSpr,64-32+sl-B.plX,50,64,64);
+  else if(B.aVis&&!(B.blink==='a'&&Math.floor(frame/4)%2))drawMon(B.a,64+sl,114,true,B.aX,B.aY,B.aShrink);
+  if(B.statFx){const f=B.statFx,cx=f.side==='e'?176:64,by=f.side==='e'?60:104;
+    for(let i=0;i<8;i++){const ph=(f.t*1.5+i/8)%1;const yy=f.up?by-ph*50:by-50+ph*50;nR(cx-26+i*7,yy,3,5,f.up?'#f8a040':'#4880f0')}}
+  if(B.card){const c=B.card;ctx.save();ctx.translate((c.x)*S,(c.y)*S);ctx.rotate(c.rot||0);ctx.drawImage(CARD,-12,-14,24,28);ctx.restore();
+    if(c.star)for(let i=0;i<3;i++){const t=(frame%40)/40;nR(c.x-14+i*14,c.y-12-t*8,2,2,'#f8e050')}}
+  if(B.showE)hpBox(B.e,8,10,104,28,B.dispE,false);
+  if(B.showA)hpBox(B.a,128,72,108,38,B.dispA,true);
+  box(0,112,240,48,'dark');
+  if(UI.bprompt){const ls=UI.bprompt.split('\n');ls.forEach((l,i)=>txt(l,10,120+i*16,TXT_DARK))}
+  if(UI.moveInfo){box(160,112,80,48);const M=MV[UI.moveInfo];txt('威力 '+(M.pow||'—'),168,120,Object.assign({size:14},TXT_LIGHT));
+    nR(168,138,64,14,TYPECOL[M.type]);txt(M.type+' 系',200,139,{size:14,align:'center',col:'#fff',sh:'#0006'})}
+}
+function renderTitle(){
+  const g=ctx.createLinearGradient(0,0,0,H*S);g.addColorStop(0,'#2a1458');g.addColorStop(1,'#7b3fe4');ctx.fillStyle=g;ctx.fillRect(0,0,W*S,H*S);
+  for(let i=0;i<40;i++){const x=(i*53+frame*.2*(1+i%3))%W,y=(i*37)%100;nR(x,y,1,1,i%5?'#c8b0ff':'#fff')}
+  nR(0,96,W,64,'#3a2080');
+  txt('法克娛樂',120,14,{size:52,align:'center',col:'#fff',sh:'#20103a'});
+  txt('FUCKENT  實況怪獸',120,46,{size:18,align:'center',col:'#f8d860',sh:'#20103a'});
+  txt('～ 榮譽會員之路 ～',120,60,{size:14,align:'center',col:'#e8d8ff',sh:'#20103a'});
+  STARTERS.forEach((s,i)=>{const bob=Math.sin(frame/12+i*2)*2;img(MONSPR[s],48+i*56,72+bob,48,48)});
+  if(!UI.menu&&!busy&&Math.floor(frame/30)%2)txt('按 A 開始',120,136,{size:16,align:'center',col:'#fff',sh:'#20103a'});
+  txt('同人惡搞作品 ・ 非商業用途',238,150,{size:10,align:'right',col:'#b8a0e8',shadow:false})}
+function renderIntro(){const g=ctx.createLinearGradient(0,0,0,H*S);g.addColorStop(0,'#101828');g.addColorStop(1,'#30406a');ctx.fillStyle=g;ctx.fillRect(0,0,W*S,H*S);
+  ctx.fillStyle='#4a5a8a';ctx.beginPath();ctx.ellipse(120*S,96*S,40*S,9*S,0,0,7);ctx.fill();if(UI.introSpr)img(UI.introSpr,88,32,64,64)}
+function renderEnding(){
+  const t=(performance.now()-END.t0)/1000;const g=ctx.createLinearGradient(0,0,0,H*S);g.addColorStop(0,'#1a0c38');g.addColorStop(1,'#5a2ab0');ctx.fillStyle=g;ctx.fillRect(0,0,W*S,H*S);
+  for(let i=0;i<50;i++){const x=(i*47)%W,y=(i*29+t*10*(1+i%3))%H;nR(x,y,1,1,i%4?'#c8b0ff':'#fff8c0')}
+  const startY=170-t*14;let lastY=0;
+  CREDITS.forEach((l,i)=>{const y=startY+i*18;lastY=y;if(y>-20&&y<H-48){const big=i===0||l==='THE END';txt(l.split('{N}').join(G.name),120,y,{size:big?20:15,align:'center',col:big?'#f8d860':'#fff',sh:'#20103a'})}});
+  if(lastY<60&&!END.done)END.done=true;
+  const ks=Object.keys(MONSPR);ks.forEach((k,i)=>{const bob=Math.abs(Math.sin(t*3+i))*6;img(MONSPR[k],3+i*26,H-30-bob,26,26)});
+  img(BADGE,W-40,6,32,32);
+  if(END.done&&Math.floor(frame/30)%2)txt('按 A 回到標題',120,H-52,{size:14,align:'center',col:'#fff',sh:'#20103a'})}
+function renderUI(){
+  if(UI.badge){nR(0,0,W,H,'rgba(10,0,30,.6)');const t=frame/10;for(let i=0;i<10;i++){const a=t*.3+i*Math.PI/5;nR(120+Math.cos(a)*58-1,56+Math.sin(a)*48-1,3,3,i%2?'#f8e060':'#fff')}
+    img(BADGE,72,8,96,96)}
+  const d=UI.dlg;
+  if(d){const st=mode==='battle'?'dark':'light',T=st==='dark'?TXT_DARK:TXT_LIGHT;
+    if(st==='light')box(2,112,236,46);else box(0,112,240,48,'dark');
+    let left=Math.floor(d.chars);d.pages[d.page].forEach((l,i)=>{const s=l.slice(0,Math.max(0,left));left-=l.length;txt(s,10,119+i*17,T)});
+    if(d.chars>=pageLen(d)&&!d.wait&&!d.keep&&Math.floor(frame/20)%2){const c=st==='dark'?'#f8f8f8':'#e04848';nR(226,148,6,2,c);nR(227,150,4,1,c);nR(228,151,2,1,c)}}
+  const m=UI.menu;
+  if(m){const rows=Math.ceil(m.opts.length/m.cols),h=m.h||rows*m.rowH+10;box(m.x,m.y,m.w,h);const cw=(m.w-14)/m.cols;
+    m.opts.forEach((o,i)=>{const c=i%m.cols,r=Math.floor(i/m.cols);const x=m.x+14+c*cw,y=m.y+(m.ytop||5)+r*m.rowH;const ob=typeof o==='string'?{t:o}:o;
+      let tx=x;if(ob.icon){img(ob.icon,x,y-2);tx=x+20}
+      txt(ob.t,tx,y,Object.assign({},TXT_LIGHT,ob.dim?{col:'#a0a0a0'}:{}));if(ob.r)txt(ob.r,m.x+m.w-10,y,Object.assign({align:'right'},TXT_LIGHT,ob.dim?{col:'#a0a0a0'}:{}));
+      if(i===m.idx){nR(x-9,y+2,2,7,'#383838');nR(x-7,y+3,1,5,'#383838');nR(x-6,y+4,1,3,'#383838');nR(x-5,y+5,1,1,'#383838')}})}
+  if(UI.white>0){ctx.fillStyle=`rgba(255,255,255,${UI.white})`;ctx.fillRect(0,0,W*S,H*S)}
+  if(UI.fade>0){ctx.fillStyle=`rgba(0,0,0,${UI.fade})`;ctx.fillRect(0,0,W*S,H*S)}}
+function render(){ctx.imageSmoothingEnabled=false;
+  if(mode==='title')renderTitle();else if(mode==='intro')renderIntro();else if(mode==='battle'&&B)renderBattle();else if(mode==='ending'&&END)renderEnding();else renderWorld();
+  renderUI()}
+let lastT=performance.now(),acc=0;const STEP=1000/60;
+function loop(){const now=performance.now();acc+=Math.min(200,now-lastT);lastT=now;
+  for(let i=anims.length-1;i>=0;i--){const a=anims[i];const p=Math.min(1,(now-a.t0)/a.ms);a.fn(p);if(p>=1){anims.splice(i,1);a.res()}}
+  while(acc>=STEP){frame++;update();acc-=STEP}
+  render();requestAnimationFrame(loop)}
+(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(()=>{});
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
