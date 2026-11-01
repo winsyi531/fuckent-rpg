@@ -793,7 +793,7 @@ async function battle(opt){
   const wild=opt.wild||null,tr=opt.trainer||null;
   B={wild:!!wild,tr,team:wild?[wild]:tr.team,ei:0,e:wild||tr.team[0],a:null,eVis:false,aVis:false,showE:false,showA:false,
      eX:0,eY:0,aX:0,aY:0,dispE:0,dispA:0,dispX:0,bg:opt.bg||'grass',st:{a:{atk:0,def:0},e:{atk:0,def:0}},
-     trSpr:tr?charSprite(tr.look,'down',0):null,plSpr:charSprite(LOOK.player,'up',0),trX:0,plX:0,card:null,slide:1,blink:null,statFx:null,eShrink:0,moveIdx:new Map()};
+     trSpr:tr?charSprite(tr.look,'down',0):null,plSpr:charSprite(LOOK.player,'up',0),trX:0,plX:0,card:null,slide:1,blink:null,statFx:null,eShrink:0,moveIdx:new Map(),part:new Set()};
   SFX.encounter();
   for(let i=0;i<3;i++){await tween(70,p=>UI.fade=p);await tween(70,p=>UI.fade=1-p)}
   await fadeOut(200);mode='battle';if(wild){B.eVis=true;B.dispE=wild.hp}await fadeIn(150);
@@ -823,9 +823,9 @@ function enemyMove(){const ms=B.e.moves;const dmg=ms.filter(k=>MV[k].pow>0),st=m
   if(st.length&&Math.random()<.25)return pick(st);
   if(!B.wild){const best=dmg.filter(k=>typeEff(MV[k].type,SP[B.a.sp].type)>1);if(best.length&&Math.random()<.6)return pick(best)}
   return pick(dmg.length?dmg:ms)}
-async function sendEnemy(m){B.eShrink=1;B.e=m;B.st.e={atk:0,def:0};B.dispE=m.hp;B.eY=0;B.eVis=true;SFX.pop();
+async function sendEnemy(m){B.eShrink=1;B.e=m;B.part=new Set(B.a&&B.a.hp>0?[B.a]:[]);B.st.e={atk:0,def:0};B.dispE=m.hp;B.eY=0;B.eVis=true;SFX.pop();
   await tween(250,p=>B.eShrink=1-p);B.showE=true;await say(`${B.tr.name} 派出了 ${nm(m)}！`,{wait:500})}
-async function sendAlly(m){B.aShrink=1;B.a=m;B.moveIdx.delete(m);B.st.a={atk:0,def:0};B.dispA=m.hp;B.dispX=expFrac(m);B.aY=0;B.aVis=true;SFX.pop();
+async function sendAlly(m){B.aShrink=1;B.a=m;B.moveIdx.delete(m);B.part.add(m);B.st.a={atk:0,def:0};B.dispA=m.hp;B.dispX=expFrac(m);B.aY=0;B.aVis=true;SFX.pop();
   await say(`去吧！${nm(m)}！`,{wait:300});await tween(250,p=>B.aShrink=1-p);B.showA=true;await sleep(200)}
 const expFrac=m=>clamp((m.exp-expFor(m.lvl))/(expFor(m.lvl+1)-expFor(m.lvl)),0,1);
 async function animHP(side,from,to,max){const key=side==='a'?'dispA':'dispE';await tween(300+Math.abs(from-to)/max*700,p=>B[key]=from+(to-from)*p);B[key]=to}
@@ -848,7 +848,7 @@ async function useMove(s,id){
 async function checkFaint(){
   if(B.e.hp<=0){SFX.faint();await tween(400,p=>B.eY=p*70);B.eVis=false;B.showE=false;
     await say(`${pre('e')}${nm(B.e)} 倒下了！`);
-    const gain=Math.floor(SP[B.e.sp].xp*B.e.lvl/7*(B.wild?1:1.5));await gainExp(B.a,gain);
+    const gain=Math.floor(SP[B.e.sp].xp*B.e.lvl/7*(B.wild?1:1.5));const ps=G.party.filter(m=>B.part.has(m)&&m.hp>0);const share=Math.max(1,Math.floor(gain/Math.max(1,ps.length)));for(const m of ps)await gainExp(m,share);
     if(!B.wild&&B.ei<B.team.length-1){B.ei++;await sendEnemy(B.team[B.ei]);return{cont:true}}
     if(!B.wild){B.trSpr=charSprite(B.tr.look,'down',0);await tween(400,p=>B.trX=120*(1-p));await say(`你打贏了 ${B.tr.name}！`);for(const l of B.tr.lose)await say(l)}
     const earn=B.wild?B.e.lvl*15:B.team.reduce((t,m)=>t+m.lvl*25,0);G.points=(G.points||0)+earn;await say(`{N} 獲得了 ${earn} 點頻道點數！`);
@@ -858,10 +858,10 @@ async function checkFaint(){
     if(G.party.some(m=>m.hp>0)){const i=await battlePartyPick(true);await sendAlly(G.party[i]);return{cont:true}}
     await say('{N} 的夥伴全部倒下了……');await say('{N} 眼前一片漆黑！');return{end:'lose'}}
   return null}
-async function gainExp(m,n){await say(`${nm(m)} 獲得了 ${n} 點經驗值！`,{wait:400});m.exp+=n;
-  while(true){const from=B.dispX,to=expFrac(m)>=1||m.exp>=expFor(m.lvl+1)?1:expFrac(m);await tween(450,p=>B.dispX=from+(to-from)*p);
+async function gainExp(m,n){const act=m===B.a;await say(`${nm(m)} 獲得了 ${n} 點經驗值！`,{wait:400});m.exp+=n;
+  while(true){if(act){const from=B.dispX,to=m.exp>=expFor(m.lvl+1)?1:expFrac(m);await tween(450,p=>B.dispX=from+(to-from)*p)}
     if(m.exp<expFor(m.lvl+1))break;
-    const old=m.maxhp;m.lvl++;calc(m);m.hp+=m.maxhp-old;B.dispA=m.hp;B.dispX=0;SFX.lvl();
+    const old=m.maxhp;m.lvl++;calc(m);m.hp+=m.maxhp-old;if(act){B.dispA=m.hp;B.dispX=0}SFX.lvl();
     await say(`${nm(m)} 升到了 Lv.${m.lvl}！`);
     for(const[l,mv]of SP[m.sp].learn)if(l===m.lvl&&!m.moves.includes(mv))await learnMove(m,mv)}}
 async function learnMove(m,mv){
