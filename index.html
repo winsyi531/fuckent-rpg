@@ -793,7 +793,7 @@ async function battle(opt){
   const wild=opt.wild||null,tr=opt.trainer||null;
   B={wild:!!wild,tr,team:wild?[wild]:tr.team,ei:0,e:wild||tr.team[0],a:null,eVis:false,aVis:false,showE:false,showA:false,
      eX:0,eY:0,aX:0,aY:0,dispE:0,dispA:0,dispX:0,bg:opt.bg||'grass',st:{a:{atk:0,def:0},e:{atk:0,def:0}},
-     trSpr:tr?charSprite(tr.look,'down',0):null,plSpr:charSprite(LOOK.player,'up',0),trX:0,plX:0,card:null,slide:1,blink:null,statFx:null,eShrink:0};
+     trSpr:tr?charSprite(tr.look,'down',0):null,plSpr:charSprite(LOOK.player,'up',0),trX:0,plX:0,card:null,slide:1,blink:null,statFx:null,eShrink:0,moveIdx:new Map()};
   SFX.encounter();
   for(let i=0;i<3;i++){await tween(70,p=>UI.fade=p);await tween(70,p=>UI.fade=1-p)}
   await fadeOut(200);mode='battle';if(wild){B.eVis=true;B.dispE=wild.hp}await fadeIn(150);
@@ -806,7 +806,7 @@ async function battle(opt){
     UI.bprompt=`要讓 ${nm(B.a)}\n做什麼？`;
     const c=await choose(['戰鬥','背包','隊伍','逃跑'],{x:124,y:112,w:116,h:48,cols:2,cancel:false,rowH:18,ytop:9});
     UI.bprompt=null;let act=null;
-    if(c===0){const mi=await choose(B.a.moves.map(k=>MV[k].name),{x:0,y:112,w:160,h:48,cols:2,rowH:18,ytop:9,onMove:i=>UI.moveInfo=B.a.moves[i]});UI.moveInfo=null;if(mi<0)continue;act={t:'move',mv:B.a.moves[mi]}}
+    if(c===0){const last=Math.min(B.moveIdx.get(B.a)||0,B.a.moves.length-1);const mi=await choose(B.a.moves.map(k=>MV[k].name),{x:0,y:112,w:160,h:48,cols:2,rowH:18,ytop:9,idx:last,onMove:i=>UI.moveInfo=B.a.moves[i]});UI.moveInfo=null;if(mi<0)continue;B.moveIdx.set(B.a,mi);act={t:'move',mv:B.a.moves[mi]}}
     else if(c===1){const r=await battleBag();if(r==='cancel')continue;if(r==='caught')return endBattle('caught');act={t:'done'}}
     else if(c===2){const i=await battlePartyPick(false);if(i<0)continue;await say(`${nm(B.a)}，回來吧！`,{wait:400});B.aVis=false;B.showA=false;await sendAlly(G.party[i]);act={t:'done'}}
     else{if(!wild){await say('不行！訓練師對戰不能逃跑！');continue}
